@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Controller</string>
+    <string name="settings_title">设置</string>
+    <string name="send">发送</string>
+    <string name="input_hint">输入消息…</string>
+    <string name="role_user">你</string>
+    <string name="role_assistant">助手</string>
+    <string name="need_setup">请先设置你的 LLM 服务商</string>
+    <string name="saved">已保存</string>
+    <string name="provider_header">LLM 服务商</string>
+    <string name="provider_note">任何 OpenAI 兼容的 API 都可以使用：OpenAI、OpenRouter、Groq、Ollama、LM Studio…</string>
+    <string name="label_url">API 地址</string>
+    <string name="hint_url">https://api.openai.com/v1</string>
+    <string name="label_key">API 密钥</string>
+    <string name="hint_key">sk-…</string>
+    <string name="label_model">模型</string>
+    <string name="hint_model">gpt-4o-mini</string>
+    <string name="save">保存</string>
+    <string name="drawer_title">聊天记录</string>
+    <string name="new_chat">新对话</string>
+    <string name="delete_symbol">✕</string>
+    <string name="drawer_empty">还没有聊天记录</string>
+    <string name="msg_count">%1$d 条消息</string>
+    <string name="agent_mode">自动控制</string>
+    <string name="agent_hint">描述任务…</string>
+    <string name="agent_stop">停止</string>
+    <string name="agent_need_root">需要 ROOT 权限。请在 KernelSU 等管理器中给 Controller 授权后重试。</string>
+    <string name="agent_starting">正在启动…</string>
+    <string name="agent_running">正在执行第 %1$d 步…</string>
+    <string name="agent_step">第 %1$d 步 · %2$s</string>
+    <string name="agent_stopping">正在停止…</string>
+    <string name="agent_stopped">⏹ 已停止，共执行 %1$d 步。</string>
+    <string name="agent_max_steps">⏹ 已达 %1$d 步上限。</string>
+    <string name="agent_repeat_stop">⏹ 已停止：同一动作反复执行且没有进展。</string>
+    <string name="agent_error">❌ 出错：%1$s</string>
+    <string name="agent_done">✅ %1$s</string>
+    <string name="agent_ask">❓ %1$s</string>
+    <string name="agent_finished">任务完成</string>
+    <string name="agent_notif_title">Controller 正在自动操作</string>
+    <string name="agent_channel">自动操作</string>
+    <string name="agent_already_running">已有任务正在执行</string>
+    <string name="agent_chat_title">自动操作</string>
+    <string name="screenshot">截图</string>
+</resources>

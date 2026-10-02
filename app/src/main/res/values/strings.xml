@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Controller</string>
+    <string name="settings_title">Settings</string>
+    <string name="send">Send</string>
+    <string name="input_hint">Message…</string>
+    <string name="role_user">You</string>
+    <string name="role_assistant">Assistant</string>
+    <string name="need_setup">Set up your LLM provider first</string>
+    <string name="saved">Saved</string>
+    <string name="provider_header">LLM Provider</string>
+    <string name="provider_note">Any OpenAI-compatible API works: OpenAI, OpenRouter, Groq, Ollama, LM Studio…</string>
+    <string name="label_url">Base URL</string>
+    <string name="hint_url">https://api.openai.com/v1</string>
+    <string name="label_key">API key</string>
+    <string name="hint_key">sk-…</string>
+    <string name="label_model">Model</string>
+    <string name="hint_model">gpt-4o-mini</string>
+    <string name="save">Save</string>
+    <string name="drawer_title">Chat history</string>
+    <string name="new_chat">New chat</string>
+    <string name="delete_symbol">✕</string>
+    <string name="drawer_empty">No conversations yet</string>
+    <string name="msg_count">%1$d messages</string>
+    <string name="agent_mode">Auto-control</string>
+    <string name="agent_hint">Describe a task…</string>
+    <string name="agent_stop">Stop</string>
+    <string name="agent_need_root">Root access is required. Grant root to Controller (e.g. in KernelSU), then try again.</string>
+    <string name="agent_starting">Starting…</string>
+    <string name="agent_running">Running step %1$d…</string>
+    <string name="agent_step">Step %1$d · %2$s</string>
+    <string name="agent_stopping">Stopping…</string>
+    <string name="agent_stopped">⏹ Stopped after %1$d steps.</string>
+    <string name="agent_max_steps">⏹ Reached the %1$d-step limit.</string>
+    <string name="agent_repeat_stop">⏹ Stopped: the same action repeated too many times without progress.</string>
+    <string name="agent_error">❌ Agent error: %1$s</string>
+    <string name="agent_done">✅ %1$s</string>
+    <string name="agent_ask">❓ %1$s</string>
+    <string name="agent_finished">Task finished</string>
+    <string name="agent_notif_title">Controller is automating</string>
+    <string name="agent_channel">Automation</string>
+    <string name="agent_already_running">An agent task is already running</string>
+    <string name="agent_chat_title">Automation</string>
+    <string name="screenshot">Screenshot</string>
+</resources>
