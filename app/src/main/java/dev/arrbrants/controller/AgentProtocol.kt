@@ -1,5 +1,6 @@
 package dev.arrbrants.controller
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import kotlin.math.roundToInt
@@ -11,6 +12,10 @@ import kotlin.math.roundToInt
  */
 object AgentProtocol {
 
+    /** How deeply sequences may nest, and how many actions one step may chain. */
+    const val MAX_SEQUENCE_DEPTH = 2
+    const val MAX_SEQUENCE_ACTIONS = 6
+
     sealed class Action {
         data class Tap(val x: Int, val y: Int) : Action()
         data class DoubleTap(val x: Int, val y: Int) : Action()
@@ -20,6 +25,8 @@ object AgentProtocol {
         data class Text(val text: String) : Action()
         data class Key(val key: String) : Action()
         data class Wait(val ms: Int) : Action()
+        /** Several actions run in order inside one step. */
+        data class Sequence(val steps: List<Action>) : Action()
         data class Done(val summary: String) : Action()
         data class Ask(val question: String) : Action()
     }
@@ -43,6 +50,10 @@ object AgentProtocol {
         {"thought":"...","action":"done","summary":"what was accomplished"}
         {"thought":"...","action":"ask","question":"..."}     // only when truly blocked or information is missing
 
+        A step may also chain several actions that run in the given order inside ONE step:
+        {"thought":"why this whole chain is safe","action":"sequence","steps":[{"action":"tap_text","text":"WLAN"},{"action":"wait","ms":600},{"action":"tap_text","text":"设置"}]}
+        Every element of "steps" is a full action like the ones above (a sequence may contain another sequence), and "done"/"ask" may not appear inside one.
+
         Every reply may also include a "notes" field: a scratchpad that is carried across steps and shown back to you on the next step. Use it to remember anything you still need — especially content you read (e.g. email texts you are collecting for a summary) and which items you have already processed. When present it replaces the previous notes. Example:
         {"thought":"...","action":"tap_text","text":"Next email","notes":"Read 1/3: Google security alert - new sign-in on Pixel, 2 days ago. Remaining: Tavily, Rotem Weiss."}
 
@@ -50,7 +61,9 @@ object AgentProtocol {
         - Every screenshot has a faint magenta grid: the lines are labeled 100..900 on the 0-1000 coordinate scale — read coordinates off this grid so taps land precisely.
         - Your full step history (all previous screenshots and your own replies) is attached to the conversation; rely on it instead of revisiting screens you have already seen.
         - Keep your notes up to date: when you read or learn something you will need later (like an email to summarize), write it into "notes" immediately — you cannot go back to earlier screenshots and nothing else is remembered.
-        - One action per reply. After each action you receive a fresh screenshot.
+        - One action per reply, or one sequence of actions. After each step you receive a fresh screenshot.
+        - Use a sequence when a chain of actions is certain from the current screenshot — opening a menu and then picking a known item, tapping a field and typing, dismissing a predictable popup. You never see the screen between the actions of a sequence, so only chain steps that do not depend on new content appearing (use tap_text, not guessed coordinates, for later elements), keep chains short, and put a short wait before an action that needs the UI to settle.
+        - If any part of a chain depends on something you cannot see yet, send a single action instead and look at the next screenshot.
         - A small status banner titled "Controller" may appear at the very top of the screen. Ignore it; never tap it.
         - Prefer tap_text for any target with a visible label (buttons, menu items, input fields). Use tap with coordinates only for unlabeled targets or icons.
         - If a coordinate tap does not do what you expected, do not retry the same spot — switch to tap_text with the visible label.
@@ -100,8 +113,13 @@ object AgentProtocol {
         }
         val thought = obj.optString("thought").trim()
         val notes = obj.optString("notes").trim().ifBlank { null }
-        val action = obj.optString("action").trim().lowercase()
-        val parsed = when (action) {
+        return Step(thought, parseAction(obj, 1), notes)
+    }
+
+    /** Parses one action object; [depth] guards against runaway nested sequences. */
+    private fun parseAction(obj: JSONObject, depth: Int): Action {
+        val name = obj.optString("action").trim().lowercase()
+        val action = when (name) {
             "tap" -> Action.Tap(need(obj, "x"), need(obj, "y"))
             "double_tap" -> Action.DoubleTap(need(obj, "x"), need(obj, "y"))
             "long_press" -> Action.LongPress(need(obj, "x"), need(obj, "y"))
@@ -113,27 +131,55 @@ object AgentProtocol {
             "text" -> Action.Text(requireText(obj, "text"))
             "key" -> Action.Key(requireText(obj, "key"))
             "wait" -> Action.Wait(obj.optInt("ms", 1000).coerceIn(0, 5000))
+            "sequence" -> Action.Sequence(parseSequence(obj.optJSONArray("steps"), depth))
             "done" -> Action.Done(obj.optString("summary").ifBlank { "task finished" })
             "ask" -> Action.Ask(obj.optString("question").ifBlank { "need more information" })
-            else -> throw IOException("unknown action '$action'")
+            else -> throw IOException("unknown action '$name'")
         }
-        return Step(thought, parsed, notes)
+        if (depth > 1 && (action is Action.Done || action is Action.Ask)) {
+            throw IOException("\"$name\" must be the only action in a reply, not part of a sequence")
+        }
+        return action
     }
 
-    fun toScreenSpace(step: Step, shot: ScreenCapture.Shot): Step = Step(
-        step.thought,
-        when (val a = step.action) {
-            is Action.Tap -> Action.Tap(px(a.x, shot.screenWidth), px(a.y, shot.screenHeight))
-            is Action.DoubleTap -> Action.DoubleTap(px(a.x, shot.screenWidth), px(a.y, shot.screenHeight))
-            is Action.LongPress -> Action.LongPress(px(a.x, shot.screenWidth), px(a.y, shot.screenHeight))
-            is Action.Swipe -> Action.Swipe(
-                px(a.x1, shot.screenWidth), px(a.y1, shot.screenHeight),
-                px(a.x2, shot.screenWidth), px(a.y2, shot.screenHeight),
-                a.durationMs
-            )
-            else -> a
+    private fun parseSequence(arr: JSONArray?, depth: Int): List<Action> {
+        if (depth > MAX_SEQUENCE_DEPTH) {
+            throw IOException("sequences nested more than $MAX_SEQUENCE_DEPTH levels deep")
         }
-    )
+        if (arr == null || arr.length() == 0) {
+            throw IOException("sequence needs a non-empty \"steps\" array")
+        }
+        if (arr.length() > MAX_SEQUENCE_ACTIONS) {
+            throw IOException("sequence has ${arr.length()} actions, the limit is $MAX_SEQUENCE_ACTIONS")
+        }
+        val out = ArrayList<Action>(arr.length())
+        for (i in 0 until arr.length()) {
+            val child = try {
+                arr.optJSONObject(i)
+            } catch (e: Exception) {
+                throw IOException("sequence step ${i + 1} is not a JSON object")
+            } ?: throw IOException("sequence step ${i + 1} is not a JSON object")
+            out.add(parseAction(child, depth + 1))
+        }
+        return out
+    }
+
+    fun toScreenSpace(step: Step, shot: ScreenCapture.Shot): Step =
+        Step(step.thought, map(step.action, shot), step.notes)
+
+    /** Converts an action (and everything nested in it) to real screen pixels. */
+    private fun map(action: Action, shot: ScreenCapture.Shot): Action = when (action) {
+        is Action.Tap -> Action.Tap(px(action.x, shot.screenWidth), px(action.y, shot.screenHeight))
+        is Action.DoubleTap -> Action.DoubleTap(px(action.x, shot.screenWidth), px(action.y, shot.screenHeight))
+        is Action.LongPress -> Action.LongPress(px(action.x, shot.screenWidth), px(action.y, shot.screenHeight))
+        is Action.Swipe -> Action.Swipe(
+            px(action.x1, shot.screenWidth), px(action.y1, shot.screenHeight),
+            px(action.x2, shot.screenWidth), px(action.y2, shot.screenHeight),
+            action.durationMs
+        )
+        is Action.Sequence -> Action.Sequence(action.steps.map { map(it, shot) })
+        else -> action
+    }
 
     fun describe(action: Action): String = when (action) {
         is Action.Tap -> "tap (${action.x}, ${action.y})"
@@ -144,6 +190,9 @@ object AgentProtocol {
         is Action.Text -> "type \"${action.text}\""
         is Action.Key -> "key ${action.key}"
         is Action.Wait -> "wait ${action.ms}ms"
+        is Action.Sequence ->
+            "sequence of ${action.steps.size} [" +
+                action.steps.joinToString(", ") { describe(it) } + "]"
         is Action.Done -> "done: ${action.summary}"
         is Action.Ask -> "ask: ${action.question}"
     }
@@ -166,6 +215,9 @@ object AgentProtocol {
         is Action.Text -> "text:${action.text.take(20)}"
         is Action.Key -> "key:${action.key}"
         is Action.Wait -> "wait"
+        // A repeated whole chain counts as one repeated step: the sequence
+        // fingerprint covers its elements, so a stuck chain still trips the guard.
+        is Action.Sequence -> "seq:" + action.steps.joinToString(",") { actionSignature(it) }
         is Action.Done -> "done"
         is Action.Ask -> "ask"
     }

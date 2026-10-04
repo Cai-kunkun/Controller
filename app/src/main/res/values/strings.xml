@@ -29,6 +29,7 @@
     <string name="agent_starting">Starting…</string>
     <string name="agent_running">Running step %1$d…</string>
     <string name="agent_step">Step %1$d · %2$s</string>
+    <string name="agent_sequence">%1$d/%2$d · %3$s</string>
     <string name="agent_stopping">Stopping…</string>
     <string name="agent_stopped">⏹ Stopped after %1$d steps.</string>
     <string name="agent_max_steps">⏹ Reached the %1$d-step limit.</string>

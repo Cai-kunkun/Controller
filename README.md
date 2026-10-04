@@ -13,6 +13,10 @@ stops it.
   a floating status banner and a foreground-service notification with a Stop action.
 - **Actions**: `tap`, `double_tap`, `long_press`, `swipe`, `text`, `key`, `wait`,
   `tap_text` (tap a UI element by its accessibility label), `done`, `ask`.
+- **Multi-action steps**: a step may be a `sequence` that chains several actions and runs
+  them in order (nested up to 2 levels, 6 actions per chain), cutting the step count on
+  long deterministic flows. The chain stops at the first failing action and names it in
+  the next screenshot's context, and it is interruptible by the Stop button.
 - **Reliable text input**: ASCII via `input text`; any language (Chinese, emoji, …) via the
   clipboard + a synthetic paste.
 - **Coordinate grid** drawn on every screenshot (labeled 0-1000) so the model can ground
@@ -58,4 +62,4 @@ Stop button, and review the conversation log to see exactly what was done.
 Controller：截屏 → 视觉大模型分析 → 通过 root 执行操作（点击/双击/长按/滑动/输入），
 自动完成手机上的 UI 任务。需要 root（KernelSU/Magisk）和一个支持视觉的 OpenAI 兼容接口
 （如 `deepseek-flash`）。支持中文输入、坐标网格、便签记忆，微信/游戏等隐藏无障碍树的
-App 也能操作。
+App 也能操作。单步还可以用 `sequence` 串起多个动作按顺序执行，压缩长流程的步数。

@@ -34,6 +34,8 @@ class AgentService : Service() {
         private const val EXTRA_TASK = "task"
         private const val EXTRA_CONVERSATION = "conversation"
         private const val STEP_DELAY_MS = 1200L
+        /** Pause between the actions of one sequence, so the UI can react. */
+        private const val SEQUENCE_GAP_MS = 450L
         /** Hard cap so a very long run can't produce an oversized request body. */
         private const val MAX_CONTEXT_MESSAGES = 200
         /** Effectively unlimited; the user can stop anytime, and a stuck-loop guard still applies. */
@@ -72,6 +74,8 @@ class AgentService : Service() {
 
     private lateinit var prefs: SharedPreferences
     private val mainHandler = Handler(Looper.getMainLooper())
+    /** Kept as a field so a running sequence can refresh the banner per action. */
+    private var overlay: AgentOverlay? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -105,7 +109,6 @@ class AgentService : Service() {
     private fun runAgent(task: String, conversationId: Long) {
         running = true
         val app = applicationContext
-        var overlay: AgentOverlay? = null
         try {
             val cfg = LlmClient.Config(
                 prefs.getString(MainActivity.KEY_URL, "") ?: "",
@@ -203,6 +206,8 @@ class AgentService : Service() {
                     finished = true
                     break
                 }
+                // A sequence must never hide a done/ask, and parsing already rejects them
+                // inside a chain, so only a bare done/ask can end the run here.
                 if (action is AgentProtocol.Action.Ask) {
                     val path = ScreenCapture.saveShot(app, conversationId, shot.jpeg)
                     appendMessage(
@@ -242,7 +247,7 @@ class AgentService : Service() {
                     break
                 }
 
-                val failure = execute(action)
+                val failure = execute(action, getString(R.string.agent_running, step))
                 lastResult = failure ?: "ok"
 
                 if (!stopRequested) Thread.sleep(STEP_DELAY_MS)
@@ -302,7 +307,7 @@ class AgentService : Service() {
     }
 
     /** Runs one action through root; returns an error string, or null on success. */
-    private fun execute(action: AgentProtocol.Action): String? = try {
+    private fun execute(action: AgentProtocol.Action, executeLabel: String = ""): String? = try {
         when (action) {
             is AgentProtocol.Action.Tap -> run("input tap ${action.x} ${action.y}")
             is AgentProtocol.Action.DoubleTap -> run(
@@ -322,10 +327,38 @@ class AgentService : Service() {
                 Thread.sleep(action.ms.toLong())
                 null
             }
+            is AgentProtocol.Action.Sequence -> runSequence(action, executeLabel)
             else -> null
         }
     } catch (e: Exception) {
         e.message ?: "command failed"
+    }
+
+    /**
+     * Runs the chained actions of one step in order, leaving a short gap between
+     * them so the UI can react. Stops at the first failing element and reports
+     * which one it was; a stop request also breaks out mid-chain.
+     */
+    private fun runSequence(action: AgentProtocol.Action.Sequence, stepLabel: String): String? {
+        var failure: String? = null
+        val total = action.steps.size
+        for ((index, sub) in action.steps.withIndex()) {
+            if (stopRequested) {
+                failure = "stopped after ${index} of $total actions"
+                break
+            }
+            if (index > 0) Thread.sleep(SEQUENCE_GAP_MS)
+            val subDesc = AgentProtocol.describe(sub)
+            val progress = getString(R.string.agent_sequence, index + 1, total, subDesc)
+            updateNotification(progress)
+            overlay?.update(stepLabel, progress, null)
+            val error = execute(sub)
+            if (error != null) {
+                failure = "action ${index + 1} of $total ($subDesc) failed: $error"
+                break
+            }
+        }
+        return failure
     }
 
     private fun run(command: String): String? {

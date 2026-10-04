@@ -11,8 +11,8 @@ android {
         applicationId = "dev.arrbrants.controller"
         minSdk = 24
         targetSdk = 34
-        versionCode = 21
-        versionName = "0.6.0"
+        versionCode = 22
+        versionName = "0.7.0"
     }
 
     buildTypes {
@@ -50,5 +50,11 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.13")
     testImplementation("androidx.test:core:1.6.1")
-    testImplementation("org.conscrypt:conscrypt-openjdk:2.7.0:linux-aarch_64")
+    // Conscrypt is a native library, so the classifier has to match the host.
+    val conscryptClassifier = if (System.getProperty("os.arch") == "aarch64") {
+        "linux-aarch_64"
+    } else {
+        "linux-x86_64"
+    }
+    testImplementation("org.conscrypt:conscrypt-openjdk:2.7.0:$conscryptClassifier")
 }
