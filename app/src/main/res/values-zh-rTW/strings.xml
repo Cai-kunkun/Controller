@@ -69,9 +69,9 @@
     <string name="balance_format">餘額 %1$s</string>
     <string name="thinking_effort">思考強度</string>
     <string name="thinking_effort_note">DeepSeek V4：預設跟隨服務商；關閉不使用思考；低/高/最高逐級增加思考深度。其他服務商可能忽略或拒絕此參數。</string>
-    <string name="thinking_default">預設（跟隨服務商）</string>
-    <string name="thinking_none">關閉（不思考）</string>
-    <string name="thinking_low">低</string>
-    <string name="thinking_high">高</string>
-    <string name="thinking_max">最高</string>
+    <string name="thinking_default">Default (provider)</string>
+    <string name="thinking_none">Off (no thinking)</string>
+    <string name="thinking_low">Low</string>
+    <string name="thinking_high">High</string>
+    <string name="thinking_max">Max</string>
 </resources>

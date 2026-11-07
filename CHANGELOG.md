@@ -2,6 +2,11 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc4] - 2026-11-07
+
+- Thinking-effort dropdown: add horizontal padding, 16sp text, and English
+  option names (Default / Off / Low / High / Max).
+
 ## [1.0.0-rc3] - 2026-11-07
 
 - **Thinking effort**: Settings now exposes `reasoning_effort` for DeepSeek V4
