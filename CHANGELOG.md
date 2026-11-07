@@ -2,6 +2,12 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc8] - 2026-11-07
+
+- **Agent chooses the starting screen**: the service no longer forces `HOME`
+  when a task starts. It captures the current screen first; the prompt tells it
+  to press home only when needed (or when it sees Controller itself).
+
 ## [1.0.0-rc7] - 2026-11-07
 
 - Fix plugin calls that arrive as **DSML text** instead of structured

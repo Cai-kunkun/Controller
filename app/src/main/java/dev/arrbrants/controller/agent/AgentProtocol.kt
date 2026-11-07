@@ -71,6 +71,10 @@ object AgentProtocol {
 
         While operating you receive a screenshot after every action and keep replying with one DSML tool call. When the task is finished call action="done". If the user only needed an answer that you can now give, reply in plain text instead — that ends the operation.
 
+        Starting screen:
+        - You begin on the currently visible screen. If it shows Controller itself (the chat list, settings or input bar), press the home key first and continue.
+        - Do not go to the home screen by reflex: stay in the current app when the task is about it, and only press home when you need the launcher or a fresh start.
+
         Coordinates use a 0-1000 scale relative to the screenshot: x=0 is the left edge, x=1000 the right edge, y=0 the top edge, y=1000 the bottom edge.
 
         Rules while operating the phone:

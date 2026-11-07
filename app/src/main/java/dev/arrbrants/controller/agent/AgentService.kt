@@ -163,14 +163,10 @@ class AgentService : Service() {
                 overlay?.update(getString(R.string.agent_starting), "", null)
             }
 
-            // Leave Controller so the agent sees (and works on) the real device UI.
-            // If the task was started while another app is in the foreground,
-            // keep that context instead.
-            val focused = RootShell.exec("dumpsys window | grep mCurrentFocus", 8000).stdout
-            if (focused.contains(packageName)) {
-                RootShell.exec("input keyevent KEYCODE_HOME")
-                Thread.sleep(900)
-            }
+            // The activity moves itself to the background right after starting
+            // us; give it a moment so the first screenshot shows the real UI.
+            // Whether to open the launcher is now the model's decision.
+            Thread.sleep(800)
 
             val systemMsg = LlmClient.Msg("system", AgentProtocol.systemPrompt())
             val seed = ConversationStore.loadAll(prefs).find { it.id == conversationId }

@@ -7,7 +7,7 @@ endpoint, and executes the returned actions through `su` (KernelSU / Magisk).
 Core loop: **screenshot → LLM → action → repeat** until the task completes or the user
 stops it.
 
-**Status: 1.0.0-rc7** — release candidate ([CHANGELOG](CHANGELOG.md)).
+**Status: 1.0.0-rc8** — release candidate ([CHANGELOG](CHANGELOG.md)).
 
 ## Features
 
