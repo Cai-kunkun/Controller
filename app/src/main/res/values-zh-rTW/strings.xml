@@ -42,4 +42,20 @@
     <string name="agent_already_running">已有任務正在執行</string>
     <string name="agent_chat_title">自動操作</string>
     <string name="screenshot">截圖</string>
+    <string name="app_subtitle">端側自動代理</string>
+    <string name="empty_title">還沒有訊息</string>
+    <string name="empty_hint">描述一個任務，Controller 會在你的裝置上自動完成。</string>
+    <string name="delete_chat">刪除對話</string>
+    <string name="ctx_label">上下文</string>
+    <string name="ctx_usage">%1$s / %2$s</string>
+    <string name="ctx_compacted">已壓縮 ×%1$d</string>
+    <string name="stat_hit">快取命中</string>
+    <string name="stat_miss">快取未命中</string>
+    <string name="stat_rate">命中率</string>
+    <string name="stat_tps">tok/s</string>
+    <string name="context_header">上下文</string>
+    <string name="context_window">上下文視窗</string>
+    <string name="context_window_helper">以 token 計，例如 128000</string>
+    <string name="context_window_note">當提示詞達到該視窗的 90% 時，會自動壓縮較早的步驟。</string>
+    <string name="agent_compacted">🗜 已壓縮上下文：%1$s → %2$s token，較早的步驟已省略。</string>
 </resources>

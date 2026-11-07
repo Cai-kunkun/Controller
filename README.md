@@ -24,6 +24,12 @@ stops it.
 - **Memory**: a `notes` scratchpad plus the full conversation history (all previous
   screenshots and replies) are sent every step — built for long multi-item tasks
   (e.g. "summarize my latest three emails").
+- **Auto-compaction**: when the prompt reaches 90% of the configured context window,
+  older screenshots and exchanges are replaced with a summary of the actions already
+  taken (and the running notes), so long runs keep going without overrunning the model.
+- **Cache & speed telemetry**: a strip above the input shows prompt-cache hits and
+  misses, the hit rate, output tokens/second, and how full the context window is —
+  read straight from the provider's `usage` block.
 - **Chat UI** with conversation history, per-step screenshots, and settings for any
   OpenAI-compatible endpoint.
 

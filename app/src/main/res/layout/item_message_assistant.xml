@@ -1,19 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:orientation="horizontal"
     android:paddingTop="4dp"
     android:paddingBottom="4dp">
+
+    <ImageView
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/bg_avatar"
+        android:contentDescription="@string/role_assistant"
+        android:padding="7dp"
+        android:src="@drawable/ic_agent"
+        app:tint="?attr/colorOnPrimaryContainer" />
 
     <com.google.android.material.card.MaterialCardView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="start"
-        app:cardBackgroundColor="?attr/colorSurfaceVariant"
+        android:layout_marginStart="8dp"
+        app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
         app:cardElevation="0dp"
-        app:strokeWidth="0dp"
-        app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Bubble.Assistant">
+        app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Bubble.Assistant"
+        app:strokeWidth="0dp">
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -25,12 +36,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:layout_marginEnd="8dp"
                 android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"
                 android:adjustViewBounds="true"
                 android:contentDescription="@string/screenshot"
-                android:maxWidth="260dp"
-                android:maxHeight="380dp"
+                android:maxWidth="250dp"
+                android:maxHeight="360dp"
                 android:scaleType="fitStart"
                 android:visibility="gone" />
 
@@ -38,17 +49,17 @@
                 android:id="@+id/content"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:maxWidth="300dp"
+                android:maxWidth="295dp"
                 android:paddingStart="16dp"
-                android:paddingEnd="16dp"
                 android:paddingTop="12dp"
+                android:paddingEnd="16dp"
                 android:paddingBottom="12dp"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:textSize="15sp"
-                android:textIsSelectable="true" />
+                android:textColor="?attr/colorOnSurface"
+                android:textIsSelectable="true"
+                android:textSize="15sp" />
 
         </LinearLayout>
 
     </com.google.android.material.card.MaterialCardView>
 
-</FrameLayout>
+</LinearLayout>

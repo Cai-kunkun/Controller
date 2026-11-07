@@ -9,13 +9,14 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
-import android.view.Gravity
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -24,8 +25,10 @@ import androidx.drawerlayout.widget.DrawerLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.color.MaterialColors
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -34,8 +37,10 @@ class MainActivity : AppCompatActivity() {
         const val KEY_URL = "base_url"
         const val KEY_API = "api_key"
         const val KEY_MODEL = "model"
+        const val KEY_CONTEXT_WINDOW = "context_window"
         const val KEY_CURRENT = "current_id"
         const val KEY_AGENT = "agent_mode"
+        const val DEFAULT_CONTEXT_WINDOW = 128_000
         const val TITLE_MAX = 24
     }
 
@@ -50,8 +55,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var list: RecyclerView
     private lateinit var drawerList: RecyclerView
     private lateinit var drawerLayout: DrawerLayout
-    private lateinit var input: TextInputEditText
-    private lateinit var inputLayout: TextInputLayout
+    private lateinit var toolbar: MaterialToolbar
+    private lateinit var input: EditText
+    private lateinit var emptyState: View
+    private lateinit var statsCard: MaterialCardView
+    private lateinit var ctxBar: LinearProgressIndicator
+    private lateinit var ctxText: TextView
+    private lateinit var compactBadge: TextView
+    private lateinit var statHit: TextView
+    private lateinit var statMiss: TextView
+    private lateinit var statRate: TextView
+    private lateinit var statTps: TextView
     private var busy = false
 
     private val handler = Handler(Looper.getMainLooper())
@@ -81,7 +95,15 @@ class MainActivity : AppCompatActivity() {
         list = findViewById(R.id.list)
         drawerList = findViewById(R.id.drawerList)
         input = findViewById(R.id.input)
-        inputLayout = findViewById(R.id.inputLayout)
+        emptyState = findViewById(R.id.emptyState)
+        statsCard = findViewById(R.id.statsCard)
+        ctxBar = findViewById(R.id.ctxBar)
+        ctxText = findViewById(R.id.ctxText)
+        compactBadge = findViewById(R.id.compactBadge)
+        statHit = findViewById(R.id.statHit)
+        statMiss = findViewById(R.id.statMiss)
+        statRate = findViewById(R.id.statRate)
+        statTps = findViewById(R.id.statTps)
         adapter = ChatAdapter()
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
@@ -89,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         drawerList.layoutManager = LinearLayoutManager(this)
         drawerList.adapter = drawerAdapter
 
-        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
+        toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)
         toolbar.setNavigationOnClickListener { drawerLayout.openDrawer(Gravity.START) }
 
@@ -105,6 +127,8 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.btnSend).setOnClickListener { send() }
         updateInputHint()
+        refreshUi()
+        refreshDrawer()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -170,6 +194,7 @@ class MainActivity : AppCompatActivity() {
         drawerLayout.closeDrawer(Gravity.START)
         history = ArrayList()
         currentId = -1L
+        prefs.edit().putLong(KEY_CURRENT, currentId).apply()
         refreshUi()
         refreshDrawer()
     }
@@ -178,6 +203,7 @@ class MainActivity : AppCompatActivity() {
         drawerLayout.closeDrawer(Gravity.START)
         currentId = conv.id
         history = conv.messages
+        prefs.edit().putLong(KEY_CURRENT, currentId).apply()
         refreshUi()
         refreshDrawer()
     }
@@ -185,6 +211,7 @@ class MainActivity : AppCompatActivity() {
     private fun deleteConversation(conv: ConversationStore.Conversation) {
         conversations.remove(conv)
         ScreenCapture.deleteShots(this, conv.messages)
+        StatsStore.remove(prefs, conv.id)
         if (currentId == conv.id) {
             history = ArrayList()
             currentId = -1L
@@ -229,14 +256,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         busy = true
+        val conversationId = currentId
         Thread {
             val reply = try {
                 LlmClient.send(cfg, history.map { LlmClient.Msg(it.role, it.content) })
             } catch (e: Exception) {
-                "Error: ${e.message}"
+                LlmClient.Reply("Error: ${e.message}", LlmClient.Usage(0, 0, 0, 0, 0))
+            }
+            if (conversationId >= 0 && reply.usage.promptTokens > 0) {
+                StatsStore.record(prefs, conversationId, reply.usage)
             }
             runOnUiThread {
-                history.add(ChatMessage("assistant", reply))
+                history.add(ChatMessage("assistant", reply.text))
                 busy = false
                 syncCurrent()
                 refreshUi()
@@ -254,7 +285,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateInputHint() {
-        inputLayout.hint = getString(if (agentMode) R.string.agent_hint else R.string.input_hint)
+        input.setHint(if (agentMode) R.string.agent_hint else R.string.input_hint)
     }
 
     /** Registers a fresh conversation on the first message and persists state. */
@@ -275,9 +306,51 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshUi() {
         adapter.notifyDataSetChanged()
-        if (history.isNotEmpty()) {
+        val empty = history.isEmpty()
+        emptyState.visibility = if (empty) View.VISIBLE else View.GONE
+        if (!empty) {
             list.scrollToPosition(history.size - 1)
         }
+        updateToolbarSubtitle()
+        refreshStats()
+    }
+
+    private fun updateToolbarSubtitle() {
+        val model = prefs.getString(KEY_MODEL, "")?.trim().orEmpty()
+        toolbar.subtitle = if (model.isEmpty()) getString(R.string.app_subtitle) else model
+    }
+
+    private fun refreshStats() {
+        val stats = StatsStore.load(prefs, currentId)
+        val limit = prefs.getInt(KEY_CONTEXT_WINDOW, DEFAULT_CONTEXT_WINDOW)
+            .coerceAtLeast(1024)
+        val show = history.isNotEmpty() || AgentService.running || stats.requests > 0
+        statsCard.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show) return
+
+        statHit.text = TokenBudget.format(stats.cacheHit)
+        statMiss.text = TokenBudget.format(stats.cacheMiss)
+        statRate.text = if (stats.cacheTotal > 0) {
+            String.format(Locale.US, "%.1f%%", stats.hitRate * 100)
+        } else {
+            "—"
+        }
+        statTps.text = if (stats.requests > 0) {
+            String.format(Locale.US, "%.1f", stats.lastTps)
+        } else {
+            "—"
+        }
+
+        val used = stats.lastPromptTokens
+        ctxText.text = getString(
+            R.string.ctx_usage,
+            TokenBudget.format(used),
+            TokenBudget.format(limit.toLong())
+        )
+        val percent = if (limit <= 0) 0 else ((used * 100) / limit).toInt()
+        ctxBar.setProgressCompat(percent.coerceIn(0, 100), true)
+        compactBadge.visibility = if (stats.compactions > 0) View.VISIBLE else View.GONE
+        compactBadge.text = getString(R.string.ctx_compacted, stats.compactions)
     }
 
     private fun refreshDrawer() {
@@ -330,16 +403,32 @@ class MainActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: ConversationViewHolder, position: Int) {
             val conv = conversations[position]
+            val selected = conv.id == currentId
             holder.title.text = conv.title
             holder.count.text = getString(R.string.msg_count, conv.messages.size)
+            holder.card.setCardBackgroundColor(
+                MaterialColors.getColor(
+                    holder.itemView,
+                    if (selected) com.google.android.material.R.attr.colorPrimaryContainer
+                    else com.google.android.material.R.attr.colorSurfaceVariant
+                )
+            )
+            holder.title.setTextColor(
+                MaterialColors.getColor(
+                    holder.itemView,
+                    if (selected) com.google.android.material.R.attr.colorOnPrimaryContainer
+                    else com.google.android.material.R.attr.colorOnSurface
+                )
+            )
             holder.itemView.setOnClickListener { openConversation(conv) }
             holder.delete.setOnClickListener { deleteConversation(conv) }
         }
     }
 
     private class ConversationViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val card: MaterialCardView = view.findViewById(R.id.convCard)
         val title: TextView = view.findViewById(R.id.convTitle)
         val count: TextView = view.findViewById(R.id.convCount)
-        val delete: TextView = view.findViewById(R.id.convDelete)
+        val delete: View = view.findViewById(R.id.convDelete)
     }
 }

@@ -43,4 +43,20 @@
     <string name="agent_already_running">An agent task is already running</string>
     <string name="agent_chat_title">Automation</string>
     <string name="screenshot">Screenshot</string>
+    <string name="app_subtitle">On-device agent</string>
+    <string name="empty_title">No messages yet</string>
+    <string name="empty_hint">Describe a task. Controller will drive this device for you.</string>
+    <string name="delete_chat">Delete chat</string>
+    <string name="ctx_label">Context</string>
+    <string name="ctx_usage">%1$s / %2$s</string>
+    <string name="ctx_compacted">compressed ×%1$d</string>
+    <string name="stat_hit">Cache hit</string>
+    <string name="stat_miss">Cache miss</string>
+    <string name="stat_rate">Hit rate</string>
+    <string name="stat_tps">tok/s</string>
+    <string name="context_header">Context</string>
+    <string name="context_window">Context window</string>
+    <string name="context_window_helper">In tokens, e.g. 128000</string>
+    <string name="context_window_note">Older steps are compressed automatically when the prompt reaches 90% of this window.</string>
+    <string name="agent_compacted">🗜 Context compressed: %1$s → %2$s tokens. Older steps omitted.</string>
 </resources>

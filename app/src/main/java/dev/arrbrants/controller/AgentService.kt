@@ -36,8 +36,14 @@ class AgentService : Service() {
         private const val STEP_DELAY_MS = 1200L
         /** Pause between the actions of one sequence, so the UI can react. */
         private const val SEQUENCE_GAP_MS = 450L
-        /** Hard cap so a very long run can't produce an oversized request body. */
-        private const val MAX_CONTEXT_MESSAGES = 200
+        /** Compress the conversation once the prompt reaches this share of the window. */
+        private const val COMPACT_AT = 0.90
+        /** How many of the most recent exchanges survive a compaction (3 steps). */
+        private const val KEEP_TAIL_MESSAGES = 6
+        /** Cap the per-conversation action log carried into a compaction summary. */
+        private const val STEP_LOG_MAX = 200
+        /** Belt-and-braces cap in case the provider reports no token usage at all. */
+        private const val MAX_MESSAGES_SAFETY = 300
         /** Effectively unlimited; the user can stop anytime, and a stuck-loop guard still applies. */
         const val MAX_STEPS = Int.MAX_VALUE
         private const val REPEAT_NUDGE = 4
@@ -76,6 +82,8 @@ class AgentService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     /** Kept as a field so a running sequence can refresh the banner per action. */
     private var overlay: AgentOverlay? = null
+    /** Real prompt size from the last successful reply; drives compaction. */
+    @Volatile private var lastPromptTokens = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -108,6 +116,7 @@ class AgentService : Service() {
 
     private fun runAgent(task: String, conversationId: Long) {
         running = true
+        lastPromptTokens = 0L
         val app = applicationContext
         try {
             val cfg = LlmClient.Config(
@@ -144,7 +153,13 @@ class AgentService : Service() {
             }
 
             val msgs = ArrayList<LlmClient.Msg>()
-            msgs.add(LlmClient.Msg("system", AgentProtocol.systemPrompt(task)))
+            val systemMsg = LlmClient.Msg("system", AgentProtocol.systemPrompt(task))
+            msgs.add(systemMsg)
+            val stepLog = ArrayList<String>()
+            val contextLimit = prefs.getInt(
+                MainActivity.KEY_CONTEXT_WINDOW,
+                MainActivity.DEFAULT_CONTEXT_WINDOW
+            ).coerceAtLeast(8192)
             var notes: String? = null
             var lastResult: String? = null
             var nudge: String? = null
@@ -176,15 +191,28 @@ class AgentService : Service() {
 
                 val dataUrl = "data:image/jpeg;base64," +
                     Base64.encodeToString(shot.jpeg, Base64.NO_WRAP)
-                msgs.add(
-                    LlmClient.Msg("user", AgentProtocol.stepPrompt(step, lastResult, notes, nudge), dataUrl)
+                val userMsg = LlmClient.Msg(
+                    "user",
+                    AgentProtocol.stepPrompt(step, lastResult, notes, nudge),
+                    dataUrl,
+                    TokenBudget.image(shot.sentWidth, shot.sentHeight)
                 )
                 nudge = null
-                // Keep the request bounded: drop the oldest exchanges only when
-                // the conversation grows very large (images are ~50KB each).
-                while (msgs.size > MAX_CONTEXT_MESSAGES) msgs.removeAt(1)
+                // Compact before the prompt crosses 90% of the context window.
+                // The previous reply's real prompt size is authoritative; the
+                // local estimate only has to cover the newest screenshot.
+                val projected =
+                    maxOf(lastPromptTokens, approxTokens(msgs)) + userMsg.approxTokens
+                val tooLarge = projected >= (contextLimit * COMPACT_AT).toLong() ||
+                    msgs.size >= MAX_MESSAGES_SAFETY
+                if (tooLarge) {
+                    compact(
+                        msgs, systemMsg, stepLog, notes, step, contextLimit, conversationId
+                    )
+                }
+                msgs.add(userMsg)
                 val parsed = try {
-                    requestAction(cfg, msgs)
+                    requestAction(cfg, msgs, conversationId)
                 } catch (e: Exception) {
                     appendMessage(
                         conversationId,
@@ -249,6 +277,8 @@ class AgentService : Service() {
 
                 val failure = execute(action, getString(R.string.agent_running, step))
                 lastResult = failure ?: "ok"
+                stepLog.add("$step. ${AgentProtocol.describe(action)} → ${failure ?: "ok"}")
+                if (stepLog.size > STEP_LOG_MAX) stepLog.removeAt(0)
 
                 if (!stopRequested) Thread.sleep(STEP_DELAY_MS)
             }
@@ -285,14 +315,90 @@ class AgentService : Service() {
         return Settings.canDrawOverlays(this)
     }
 
+    private fun approxTokens(msgs: List<LlmClient.Msg>): Long {
+        var total = 0L
+        for (m in msgs) total += m.approxTokens
+        return total
+    }
+
+    /**
+     * Drops the old screenshots/exchanges once the prompt reaches 90% of the
+     * context window and replaces them with a compact summary of what already
+     * happened. One cache miss here is paid back by many cached steps after it,
+     * unlike trimming the head one message at a time (which misses every step).
+     */
+    private fun compact(
+        msgs: MutableList<LlmClient.Msg>,
+        systemMsg: LlmClient.Msg,
+        stepLog: List<String>,
+        notes: String?,
+        step: Int,
+        contextLimit: Int,
+        conversationId: Long
+    ) {
+        val before = approxTokens(msgs)
+        // Never carry the system message into the tail: it is re-added above.
+        val tail = ArrayList(msgs.drop(1).takeLast(KEEP_TAIL_MESSAGES))
+        msgs.clear()
+        msgs.add(systemMsg)
+        msgs.add(LlmClient.Msg("user", compactionSummary(step, stepLog, notes)))
+        msgs.add(LlmClient.Msg("assistant", "Understood. I will continue from the current screen."))
+        msgs.addAll(tail)
+        // On a small window even a few screenshots are too much: drop the oldest
+        // kept exchanges until the fresh context is comfortably under the limit.
+        val target = (contextLimit * 0.55).toLong()
+        while (approxTokens(msgs) > target && msgs.size > 4) msgs.removeAt(3)
+        lastPromptTokens = 0L
+        val after = approxTokens(msgs)
+        StatsStore.bumpCompaction(prefs, conversationId)
+        appendMessage(
+            conversationId,
+            ChatMessage(
+                "assistant",
+                getString(
+                    R.string.agent_compacted,
+                    TokenBudget.format(before),
+                    TokenBudget.format(after)
+                )
+            )
+        )
+    }
+
+    private fun compactionSummary(step: Int, stepLog: List<String>, notes: String?): String {
+        val sb = StringBuilder()
+        sb.append("[CONTEXT COMPRESSED at step ").append(step).append("]\n")
+        sb.append("Earlier screenshots and exchanges were removed to stay inside the model's ")
+        sb.append("context window. Continue the task from the current screenshot and do not ")
+        sb.append("repeat work that is already done.\n")
+        if (!notes.isNullOrBlank()) {
+            sb.append("\nYour persistent notes:\n").append(notes).append('\n')
+        }
+        if (stepLog.isNotEmpty()) {
+            val recent = stepLog.takeLast(60)
+            sb.append("\nActions already executed:\n")
+            if (stepLog.size > recent.size) {
+                sb.append("… ").append(stepLog.size - recent.size).append(" earlier steps omitted.\n")
+            }
+            for (line in recent) sb.append(line).append('\n')
+        }
+        sb.append("\nReply with exactly one JSON action.")
+        return sb.toString()
+    }
+
     /** Asks the model for one action, giving it up to two chances to fix bad JSON. */
-    private fun requestAction(cfg: LlmClient.Config, msgs: MutableList<LlmClient.Msg>): AgentProtocol.Step {
+    private fun requestAction(
+        cfg: LlmClient.Config,
+        msgs: MutableList<LlmClient.Msg>,
+        conversationId: Long
+    ): AgentProtocol.Step {
         var lastError: String? = null
         repeat(3) {
             val reply = LlmClient.send(cfg, msgs)
-            msgs.add(LlmClient.Msg("assistant", reply))
+            lastPromptTokens = reply.usage.promptTokens
+            StatsStore.record(prefs, conversationId, reply.usage)
+            msgs.add(LlmClient.Msg("assistant", reply.text))
             try {
-                return AgentProtocol.parse(reply)
+                return AgentProtocol.parse(reply.text)
             } catch (e: IOException) {
                 lastError = e.message
                 msgs.add(
