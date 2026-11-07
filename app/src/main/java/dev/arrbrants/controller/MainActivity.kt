@@ -9,6 +9,7 @@ import dev.arrbrants.controller.data.AttachmentStore
 import dev.arrbrants.controller.data.ChatMessage
 import dev.arrbrants.controller.data.ConversationStore
 import dev.arrbrants.controller.data.StatsStore
+import dev.arrbrants.controller.llm.DeepSeekBalance
 import dev.arrbrants.controller.llm.LlmClient
 import dev.arrbrants.controller.llm.MessageMapper
 import dev.arrbrants.controller.llm.TokenBudget
@@ -71,6 +72,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statMiss: TextView
     private lateinit var statRate: TextView
     private lateinit var statTps: TextView
+    private lateinit var balanceText: TextView
     private lateinit var statsBody: View
     private lateinit var statsToggle: ImageView
     private lateinit var pendingRow: LinearLayout
@@ -119,6 +121,7 @@ class MainActivity : AppCompatActivity() {
         statMiss = findViewById(R.id.statMiss)
         statRate = findViewById(R.id.statRate)
         statTps = findViewById(R.id.statTps)
+        balanceText = findViewById(R.id.balanceText)
         statsBody = findViewById(R.id.statsBody)
         statsToggle = findViewById(R.id.statsToggle)
         pendingRow = findViewById(R.id.pendingRow)
@@ -188,6 +191,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         reloadFromPrefs()
         if (AgentService.running) handler.post(liveRefresh)
+        refreshBalance()
         invalidateOptionsMenu()
     }
 
@@ -322,6 +326,7 @@ class MainActivity : AppCompatActivity() {
                     updateBubble(index, "Error: ${error?.message}")
                 } else {
                     routeReply(index, conversationId, reply)
+                    refreshBalance()
                 }
                 syncCurrent()
                 refreshUi()
@@ -513,6 +518,36 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.drawerEmpty).visibility =
             if (conversations.isEmpty()) View.VISIBLE else View.GONE
         drawerAdapter.notifyDataSetChanged()
+    }
+
+    private var balanceLoading = false
+    private var lastBalanceFetch = 0L
+
+    /** Shows the remaining DeepSeek credit when the official API is configured. */
+    private fun refreshBalance(force: Boolean = false) {
+        val cfg = AppPrefs.config(this)
+        if (!DeepSeekBalance.isOfficial(cfg.baseUrl) || cfg.apiKey.isBlank()) {
+            balanceText.visibility = View.GONE
+            return
+        }
+        val now = System.currentTimeMillis()
+        if (!force && now - lastBalanceFetch < 30_000) return
+        if (balanceLoading) return
+        balanceLoading = true
+        lastBalanceFetch = now
+        Thread {
+            val balance = DeepSeekBalance.fetch(cfg.baseUrl, cfg.apiKey)
+            runOnUiThread {
+                balanceLoading = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (balance == null) {
+                    balanceText.visibility = View.GONE
+                } else {
+                    balanceText.text = getString(R.string.balance_format, balance.display)
+                    balanceText.visibility = View.VISIBLE
+                }
+            }
+        }.start()
     }
 
 }

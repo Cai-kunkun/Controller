@@ -7,7 +7,7 @@ endpoint, and executes the returned actions through `su` (KernelSU / Magisk).
 Core loop: **screenshot → LLM → action → repeat** until the task completes or the user
 stops it.
 
-**Status: 1.0.0-rc1** — first release candidate ([CHANGELOG](CHANGELOG.md)).
+**Status: 1.0.0-rc2** — release candidate ([CHANGELOG](CHANGELOG.md)).
 
 ## Features
 
@@ -39,6 +39,8 @@ stops it.
 - **Cache & speed telemetry**: a strip above the input shows prompt-cache hits and
   misses, the hit rate, output tokens/second, and how full the context window is —
   read straight from the provider's `usage` block.
+- **DeepSeek balance**: with the official `api.deepseek.com` endpoint, the remaining
+  credit is shown in the stats header and under the API key field.
 - **Attachments**: pick images or text files. Images are downscaled and sent to the
   vision model; text is inlined; other binaries are announced by name/type.
 - **Encrypted API key**: stored in Keystore-backed `EncryptedSharedPreferences`,

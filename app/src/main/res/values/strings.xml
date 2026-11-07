@@ -67,4 +67,5 @@
     <string name="stats_collapse">Hide details</string>
     <string name="native_tools">Native tool calling</string>
     <string name="native_tools_note">Send the device_action schema so the model emits native DSML tool calls. Turn off if your endpoint rejects tools; text DSML/JSON is still parsed.</string>
+    <string name="balance_format">Balance %1$s</string>
 </resources>

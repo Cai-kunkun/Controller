@@ -66,4 +66,5 @@
     <string name="stats_collapse">收起详情</string>
     <string name="native_tools">原生工具调用</string>
     <string name="native_tools_note">向模型声明 device_action 工具，让它直接产出原生 DSML 工具调用。若服务商不支持 tools 可关闭；关闭后仍会解析文本形式的 DSML/JSON。</string>
+    <string name="balance_format">余额 %1$s</string>
 </resources>

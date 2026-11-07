@@ -2,6 +2,12 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc2] - 2026-11-07
+
+- **DeepSeek balance**: when the official `api.deepseek.com` endpoint is
+  configured, the remaining credit (`GET /user/balance`) is shown in the
+  stats header and under the API key field in Settings.
+
 ## [1.0.0-rc1] - 2026-11-07
 
 First release candidate.
