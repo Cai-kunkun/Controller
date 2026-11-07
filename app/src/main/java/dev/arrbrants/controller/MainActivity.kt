@@ -1,22 +1,33 @@
 package dev.arrbrants.controller
 
+import dev.arrbrants.controller.agent.AgentProtocol
+import dev.arrbrants.controller.agent.AgentService
+import dev.arrbrants.controller.agent.ScreenCapture
+import dev.arrbrants.controller.data.AppPrefs
+import dev.arrbrants.controller.data.Attachment
+import dev.arrbrants.controller.data.AttachmentStore
+import dev.arrbrants.controller.data.ChatMessage
+import dev.arrbrants.controller.data.ConversationStore
+import dev.arrbrants.controller.data.StatsStore
+import dev.arrbrants.controller.llm.LlmClient
+import dev.arrbrants.controller.llm.MessageMapper
+import dev.arrbrants.controller.llm.TokenBudget
+import dev.arrbrants.controller.ui.ChatAdapter
+import dev.arrbrants.controller.ui.ConversationAdapter
 import android.Manifest
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.TextUtils
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ImageView
@@ -30,26 +41,13 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.card.MaterialCardView
-import com.google.android.material.color.MaterialColors
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
     companion object {
-        const val PREFS = "llm_prefs"
-        const val KEY_URL = "base_url"
-        const val KEY_API = "api_key"
-        const val KEY_MODEL = "model"
-        const val KEY_CONTEXT_WINDOW = "context_window"
-        const val KEY_CURRENT = "current_id"
-        const val KEY_STATS_COLLAPSED = "stats_collapsed"
-        const val KEY_NATIVE_TOOLS = "native_tools"
-        const val DEFAULT_CONTEXT_WINDOW = 128_000
         const val TITLE_MAX = 24
-        /** Text-only context budget for the routing request, in tokens. */
-        private const val CHAT_CONTEXT_TOKENS = 12_000L
-        private const val MAX_IMAGES_SHOWN = 3
     }
 
     private var history: MutableList<ChatMessage> = ArrayList()
@@ -98,9 +96,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        prefs = AppPrefs.get(this)
         conversations = ConversationStore.loadAll(prefs)
-        currentId = prefs.getLong(KEY_CURRENT, -1L)
+        currentId = AppPrefs.currentConversation(this)
         val current = conversations.find { it.id == currentId }
         if (current != null) {
             history = current.messages
@@ -125,10 +123,15 @@ class MainActivity : AppCompatActivity() {
         statsToggle = findViewById(R.id.statsToggle)
         pendingRow = findViewById(R.id.pendingRow)
         pendingScroll = findViewById(R.id.pendingScroll)
-        adapter = ChatAdapter()
+        adapter = ChatAdapter { history }
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
-        drawerAdapter = ConversationAdapter()
+        drawerAdapter = ConversationAdapter(
+            { conversations },
+            { currentId },
+            onOpen = { openConversation(it) },
+            onDelete = { deleteConversation(it) }
+        )
         drawerList.layoutManager = LinearLayoutManager(this)
         drawerList.adapter = drawerAdapter
 
@@ -141,7 +144,7 @@ class MainActivity : AppCompatActivity() {
             filePicker.launch(arrayOf("*/*"))
         }
         findViewById<View>(R.id.statsHeader).setOnClickListener { toggleStats() }
-        statsCollapsed = prefs.getBoolean(KEY_STATS_COLLAPSED, false)
+        statsCollapsed = AppPrefs.statsCollapsed(this)
         applyStatsCollapsed()
 
         input.setOnEditorActionListener { _, actionId, _ ->
@@ -195,12 +198,12 @@ class MainActivity : AppCompatActivity() {
         if (!AgentService.running) {
             ConversationStore.saveAll(prefs, conversations)
         }
-        prefs.edit().putLong(KEY_CURRENT, currentId).apply()
+        AppPrefs.setCurrentConversation(this, currentId)
     }
 
     private fun reloadFromPrefs() {
         conversations = ConversationStore.loadAll(prefs)
-        currentId = prefs.getLong(KEY_CURRENT, currentId)
+        currentId = prefs.getLong(AppPrefs.KEY_CURRENT, currentId)
         val current = conversations.find { it.id == currentId }
         history = current?.messages ?: ArrayList()
         if (current == null) currentId = -1L
@@ -213,7 +216,7 @@ class MainActivity : AppCompatActivity() {
         clearPending()
         history = ArrayList()
         currentId = -1L
-        prefs.edit().putLong(KEY_CURRENT, currentId).apply()
+        AppPrefs.setCurrentConversation(this, currentId)
         refreshUi()
         refreshDrawer()
     }
@@ -223,7 +226,7 @@ class MainActivity : AppCompatActivity() {
         clearPending()
         currentId = conv.id
         history = conv.messages
-        prefs.edit().putLong(KEY_CURRENT, currentId).apply()
+        AppPrefs.setCurrentConversation(this, currentId)
         refreshUi()
         refreshDrawer()
     }
@@ -258,12 +261,7 @@ class MainActivity : AppCompatActivity() {
         val text = input.text.toString().trim()
         if (text.isEmpty() && pending.isEmpty()) return
 
-        val cfg = LlmClient.Config(
-            prefs.getString(KEY_URL, "") ?: "",
-            SecurePrefs.apiKey(this),
-            prefs.getString(KEY_MODEL, "") ?: "",
-            prefs.getBoolean(KEY_NATIVE_TOOLS, true)
-        )
+        val cfg = AppPrefs.config(this)
         if (cfg.baseUrl.isBlank()) {
             Toast.makeText(this, R.string.need_setup, Toast.LENGTH_LONG).show()
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -286,7 +284,9 @@ class MainActivity : AppCompatActivity() {
         busy = true
 
         Thread {
-            val requestMessages = buildChatMessages(snapshot)
+            val requestMessages = MessageMapper.chat(
+                this, snapshot, AgentProtocol.systemPrompt()
+            )
             val builder = StringBuilder()
             var decided = false
             var plainText = false
@@ -370,45 +370,6 @@ class MainActivity : AppCompatActivity() {
         list.scrollToPosition(index)
     }
 
-    /** Text-only context for the routing/chat request, newest messages first. */
-    private fun buildChatMessages(source: List<ChatMessage>): List<LlmClient.Msg> {
-        val selected = ArrayList<LlmClient.Msg>()
-        var tokens = 0L
-        for (m in source.asReversed()) {
-            if (m.content.isBlank() && m.rawContent.isNullOrBlank() && m.attachments.isEmpty()) continue
-            val msg = toLlmMessage(m)
-            if (tokens + msg.approxTokens > CHAT_CONTEXT_TOKENS && selected.isNotEmpty()) break
-            selected.add(0, msg)
-            tokens += msg.approxTokens
-        }
-        return ArrayList<LlmClient.Msg>(selected.size + 1).apply {
-            add(LlmClient.Msg("system", AgentProtocol.systemPrompt()))
-            addAll(selected)
-        }
-    }
-
-    /** Turns one stored message into a prompt message, inlining attachments. */
-    private fun toLlmMessage(m: ChatMessage): LlmClient.Msg {
-        // Assistant steps carry the model's raw DSML reply; send that back
-        // verbatim instead of the human-readable bubble.
-        val base = if (m.role == "assistant") m.rawContent ?: m.content else m.content
-        if (m.attachments.isEmpty()) return LlmClient.Msg(m.role, base)
-        val images = AttachmentStore.imageDataUrls(this, m.attachments)
-        val extra = StringBuilder()
-        for (a in m.attachments) {
-            if (a.isImage) continue
-            val textText = AttachmentStore.readText(this, a)
-            if (textText != null) {
-                extra.append("\n\n[Attached file: ").append(a.name).append("]\n").append(textText)
-            } else {
-                extra.append("\n\n[Attached file: ").append(a.name)
-                    .append(" (").append(a.mime).append(", ").append(a.size).append(" bytes)")
-                    .append(" — binary content not sent]")
-            }
-        }
-        return LlmClient.Msg(m.role, base + extra, images, images.size * 1400)
-    }
-
     private fun ensureNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -465,7 +426,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleStats() {
         statsCollapsed = !statsCollapsed
-        prefs.edit().putBoolean(KEY_STATS_COLLAPSED, statsCollapsed).apply()
+        prefs.edit().putBoolean(AppPrefs.KEY_STATS_COLLAPSED, statsCollapsed).apply()
         applyStatsCollapsed()
     }
 
@@ -496,7 +457,7 @@ class MainActivity : AppCompatActivity() {
             currentId = conv.id
         }
         ConversationStore.saveAll(prefs, conversations)
-        prefs.edit().putLong(KEY_CURRENT, currentId).apply()
+        AppPrefs.setCurrentConversation(this, currentId)
     }
 
     private fun refreshUi() {
@@ -511,13 +472,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateToolbarSubtitle() {
-        val model = prefs.getString(KEY_MODEL, "")?.trim().orEmpty()
+        val model = prefs.getString(AppPrefs.KEY_MODEL, "")?.trim().orEmpty()
         toolbar.subtitle = if (model.isEmpty()) getString(R.string.app_subtitle) else model
     }
 
     private fun refreshStats() {
         val stats = StatsStore.load(prefs, currentId)
-        val limit = prefs.getInt(KEY_CONTEXT_WINDOW, DEFAULT_CONTEXT_WINDOW)
+        val limit = AppPrefs.contextWindow(this)
             .coerceAtLeast(1024)
         val show = history.isNotEmpty() || AgentService.running || stats.requests > 0
         statsCard.visibility = if (show) View.VISIBLE else View.GONE
@@ -554,120 +515,4 @@ class MainActivity : AppCompatActivity() {
         drawerAdapter.notifyDataSetChanged()
     }
 
-    private inner class ChatAdapter : RecyclerView.Adapter<BubbleViewHolder>() {
-
-        override fun getItemCount(): Int = history.size
-
-        override fun getItemViewType(position: Int): Int =
-            if (history[position].role == "user") 0 else 1
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): BubbleViewHolder {
-            val layout = if (viewType == 0) R.layout.item_message_user else R.layout.item_message_assistant
-            val v = LayoutInflater.from(parent.context).inflate(layout, parent, false)
-            return BubbleViewHolder(v)
-        }
-
-        override fun onBindViewHolder(holder: BubbleViewHolder, position: Int) {
-            val msg = history[position]
-            holder.text.text = msg.content
-            val bitmap: Bitmap? = msg.imagePath?.let { ShotThumbs.get(holder.itemView.context, it) }
-            if (bitmap != null) {
-                holder.thumb.visibility = View.VISIBLE
-                holder.thumb.setImageBitmap(bitmap)
-            } else {
-                holder.thumb.visibility = View.GONE
-                holder.thumb.setImageDrawable(null)
-            }
-            holder.attachments?.let { bindAttachments(it, msg) }
-        }
-
-        private fun bindAttachments(container: LinearLayout, msg: ChatMessage) {
-            container.removeAllViews()
-            if (msg.attachments.isEmpty()) {
-                container.visibility = View.GONE
-                return
-            }
-            container.visibility = View.VISIBLE
-            val context = container.context
-            var imagesShown = 0
-            for (a in msg.attachments) {
-                if (a.isImage && imagesShown < MAX_IMAGES_SHOWN) {
-                    val image = ShotThumbs.get(context, a.path)
-                    if (image != null) {
-                        val view = ImageView(context)
-                        view.setImageBitmap(image)
-                        view.scaleType = ImageView.ScaleType.CENTER_CROP
-                        view.layoutParams = LinearLayout.LayoutParams(dp(160), dp(120)).apply {
-                            topMargin = dp(4)
-                        }
-                        container.addView(view)
-                        imagesShown++
-                        continue
-                    }
-                }
-                val chip = TextView(context)
-                chip.text = (if (a.isImage) "🖼 " else "📎 ") + a.name
-                chip.textSize = 12f
-                chip.maxLines = 1
-                chip.ellipsize = TextUtils.TruncateAt.END
-                chip.setBackgroundResource(R.drawable.bg_chip)
-                chip.setPadding(dp(10), dp(6), dp(10), dp(6))
-                chip.layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(4) }
-                container.addView(chip)
-            }
-        }
-    }
-
-    private class BubbleViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val text: TextView = view.findViewById(R.id.content)
-        val thumb: ImageView = view.findViewById(R.id.thumb)
-        val attachments: LinearLayout? = view.findViewById(R.id.attachments)
-    }
-
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
-
-    private inner class ConversationAdapter : RecyclerView.Adapter<ConversationViewHolder>() {
-
-        override fun getItemCount(): Int = conversations.size
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ConversationViewHolder {
-            val v = LayoutInflater.from(parent.context)
-                .inflate(R.layout.item_conversation, parent, false)
-            return ConversationViewHolder(v)
-        }
-
-        override fun onBindViewHolder(holder: ConversationViewHolder, position: Int) {
-            val conv = conversations[position]
-            val selected = conv.id == currentId
-            holder.title.text = conv.title
-            holder.count.text = getString(R.string.msg_count, conv.messages.size)
-            holder.card.setCardBackgroundColor(
-                MaterialColors.getColor(
-                    holder.itemView,
-                    if (selected) com.google.android.material.R.attr.colorPrimaryContainer
-                    else com.google.android.material.R.attr.colorSurfaceVariant
-                )
-            )
-            holder.title.setTextColor(
-                MaterialColors.getColor(
-                    holder.itemView,
-                    if (selected) com.google.android.material.R.attr.colorOnPrimaryContainer
-                    else com.google.android.material.R.attr.colorOnSurface
-                )
-            )
-            holder.itemView.setOnClickListener { openConversation(conv) }
-            holder.delete.setOnClickListener { deleteConversation(conv) }
-        }
-    }
-
-    private class ConversationViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val card: MaterialCardView = view.findViewById(R.id.convCard)
-        val title: TextView = view.findViewById(R.id.convTitle)
-        val count: TextView = view.findViewById(R.id.convCount)
-        val delete: View = view.findViewById(R.id.convDelete)
-    }
 }

@@ -1,4 +1,4 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.agent
 
 import android.content.Context
 import android.graphics.Bitmap

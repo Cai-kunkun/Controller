@@ -1,5 +1,6 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.agent
 
+import dev.arrbrants.controller.llm.LlmClient
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException

@@ -1,4 +1,4 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.data
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -46,7 +46,7 @@ object SecurePrefs {
     }
 
     private fun legacy(context: Context): SharedPreferences =
-        context.getSharedPreferences(MainActivity.PREFS, Context.MODE_PRIVATE)
+        AppPrefs.get(context)
 
     fun apiKey(context: Context): String {
         val app = context.applicationContext

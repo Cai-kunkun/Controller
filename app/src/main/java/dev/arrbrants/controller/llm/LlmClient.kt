@@ -1,4 +1,4 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.llm
 
 import org.json.JSONArray
 import org.json.JSONObject

@@ -1,5 +1,7 @@
 package dev.arrbrants.controller
 
+import dev.arrbrants.controller.agent.AgentProtocol
+import dev.arrbrants.controller.agent.ScreenCapture
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail

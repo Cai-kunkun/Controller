@@ -1,5 +1,6 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.data
 
+import dev.arrbrants.controller.llm.LlmClient
 import android.content.SharedPreferences
 import org.json.JSONObject
 

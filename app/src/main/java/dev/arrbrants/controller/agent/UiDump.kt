@@ -1,4 +1,4 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.agent
 
 /**
  * Finds a labeled view inside a `uiautomator dump` XML document.

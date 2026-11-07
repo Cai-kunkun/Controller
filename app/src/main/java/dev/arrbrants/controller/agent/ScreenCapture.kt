@@ -1,5 +1,6 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.agent
 
+import dev.arrbrants.controller.data.ChatMessage
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

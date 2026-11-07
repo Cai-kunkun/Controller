@@ -1,12 +1,19 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.agent
 
+import dev.arrbrants.controller.MainActivity
+import dev.arrbrants.controller.R
+import dev.arrbrants.controller.data.AppPrefs
+import dev.arrbrants.controller.data.ChatMessage
+import dev.arrbrants.controller.data.ConversationStore
+import dev.arrbrants.controller.data.StatsStore
+import dev.arrbrants.controller.llm.LlmClient
+import dev.arrbrants.controller.llm.MessageMapper
+import dev.arrbrants.controller.llm.TokenBudget
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -33,8 +40,6 @@ class AgentService : Service() {
         private const val NOTIF_ID = 42
         private const val EXTRA_CONVERSATION = "conversation"
         private const val STEP_DELAY_MS = 1200L
-        /** Pause between the actions of one sequence, so the UI can react. */
-        private const val SEQUENCE_GAP_MS = 450L
         /** Compress the conversation once the prompt reaches this share of the window. */
         private const val COMPACT_AT = 0.90
         /** How many of the most recent exchanges survive a compaction (3 steps). */
@@ -78,6 +83,13 @@ class AgentService : Service() {
 
     private lateinit var prefs: SharedPreferences
     private val mainHandler = Handler(Looper.getMainLooper())
+    /** Executes root actions; the service only wires progress + stop checks. */
+    private val executor by lazy {
+        ActionExecutor(this, mainHandler, { stopRequested }) { label, text ->
+            updateNotification(text)
+            overlay?.update(label, text, null)
+        }
+    }
     /** Kept as a field so a running sequence can refresh the banner per action. */
     private var overlay: AgentOverlay? = null
     /** Real prompt size from the last successful reply; drives compaction. */
@@ -89,7 +101,7 @@ class AgentService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        prefs = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE)
+        prefs = AppPrefs.get(this)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -121,12 +133,7 @@ class AgentService : Service() {
         pendingToolCallIds = emptyList()
         val app = applicationContext
         try {
-            val cfg = LlmClient.Config(
-                prefs.getString(MainActivity.KEY_URL, "") ?: "",
-                SecurePrefs.apiKey(this),
-                prefs.getString(MainActivity.KEY_MODEL, "") ?: "",
-                prefs.getBoolean(MainActivity.KEY_NATIVE_TOOLS, true)
-            )
+            val cfg = AppPrefs.config(this)
             if (cfg.baseUrl.isBlank() || cfg.model.isBlank()) {
                 appendMessage(conversationId, ChatMessage("assistant", getString(R.string.need_setup)))
                 return
@@ -155,29 +162,20 @@ class AgentService : Service() {
                 Thread.sleep(900)
             }
 
-            val msgs = ArrayList<LlmClient.Msg>()
             val systemMsg = LlmClient.Msg("system", AgentProtocol.systemPrompt())
-            msgs.add(systemMsg)
-            // Seed the loop with the conversation's text so the model keeps the
-            // user's request and any earlier chat context.
             val seed = ConversationStore.loadAll(prefs).find { it.id == conversationId }
-            var seededTokens = 0L
-            for (m in (seed?.messages ?: emptyList<ChatMessage>()).takeLast(30)) {
-                if (m.role != "user" && m.role != "assistant") continue
-                if (m.content.isBlank()) continue
-                // Assistant steps carry the raw provider reply (usually DSML);
-                // give the model its own native format back.
-                val text = if (m.role == "assistant") m.rawContent ?: m.content else m.content
-                val msg = LlmClient.Msg(m.role, text)
-                if (seededTokens + msg.approxTokens > 6000) break
-                msgs.add(msg)
-                seededTokens += msg.approxTokens
-            }
+            val msgs = ArrayList<LlmClient.Msg>()
+            msgs.add(systemMsg)
+            // Seed the loop with the conversation history (raw DSML + attachments).
+            msgs.addAll(
+                MessageMapper.history(
+                    this,
+                    seed?.messages ?: emptyList(),
+                    MessageMapper.AGENT_BUDGET_TOKENS
+                )
+            )
             val stepLog = ArrayList<String>()
-            val contextLimit = prefs.getInt(
-                MainActivity.KEY_CONTEXT_WINDOW,
-                MainActivity.DEFAULT_CONTEXT_WINDOW
-            ).coerceAtLeast(8192)
+            val contextLimit = AppPrefs.contextWindow(this)
             var notes: String? = null
             var lastResult: String? = null
             var nudge: String? = null
@@ -328,7 +326,7 @@ class AgentService : Service() {
                     break
                 }
 
-                val failure = execute(action, getString(R.string.agent_running, step))
+                val failure = executor.execute(action, getString(R.string.agent_running, step))
                 lastResult = failure ?: "ok"
                 finishToolCalls(msgs, lastResult)
                 stepLog.add("$step. ${AgentProtocol.describe(action)} → ${failure ?: "ok"}")
@@ -510,119 +508,11 @@ class AgentService : Service() {
         throw IOException("model kept replying with invalid actions: $lastError")
     }
 
-    /** Runs one action through root; returns an error string, or null on success. */
-    private fun execute(action: AgentProtocol.Action, executeLabel: String = ""): String? = try {
-        when (action) {
-            is AgentProtocol.Action.Tap -> run("input tap ${action.x} ${action.y}")
-            is AgentProtocol.Action.DoubleTap -> run(
-                "input tap ${action.x} ${action.y}; input tap ${action.x} ${action.y}"
-            )
-            is AgentProtocol.Action.LongPress -> run("input swipe ${action.x} ${action.y} ${action.x} ${action.y} 800")
-            is AgentProtocol.Action.TapText -> tapByText(action.label)
-            is AgentProtocol.Action.Swipe -> run(
-                "input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.durationMs}"
-            )
-            is AgentProtocol.Action.Text -> typeText(action.text)
-            is AgentProtocol.Action.Key -> {
-                val code = AgentProtocol.keyCode(action.key)
-                if (code == null) "unknown key '${action.key}'" else run("input keyevent $code")
-            }
-            is AgentProtocol.Action.Wait -> {
-                Thread.sleep(action.ms.toLong())
-                null
-            }
-            is AgentProtocol.Action.Look -> null
-            is AgentProtocol.Action.Sequence -> runSequence(action, executeLabel)
-            else -> null
-        }
-    } catch (e: Exception) {
-        e.message ?: "command failed"
-    }
-
-    /**
-     * Runs the chained actions of one step in order, leaving a short gap between
-     * them so the UI can react. Stops at the first failing element and reports
-     * which one it was; a stop request also breaks out mid-chain.
-     */
-    private fun runSequence(action: AgentProtocol.Action.Sequence, stepLabel: String): String? {
-        var failure: String? = null
-        val total = action.steps.size
-        for ((index, sub) in action.steps.withIndex()) {
-            if (stopRequested) {
-                failure = "stopped after ${index} of $total actions"
-                break
-            }
-            if (index > 0) Thread.sleep(SEQUENCE_GAP_MS)
-            val subDesc = AgentProtocol.describe(sub)
-            val progress = getString(R.string.agent_sequence, index + 1, total, subDesc)
-            updateNotification(progress)
-            overlay?.update(stepLabel, progress, null)
-            val error = execute(sub)
-            if (error != null) {
-                failure = "action ${index + 1} of $total ($subDesc) failed: $error"
-                break
-            }
-        }
-        return failure
-    }
-
-    private fun run(command: String): String? {
-        val result = RootShell.exec(command)
-        return if (result.ok) null
-        else result.stderr.ifBlank { result.stdout }.ifBlank { "exit ${result.code}" }
-    }
-
-    /**
-     * Finds a view by its label through `uiautomator dump` and taps its center.
-     * Far more reliable than coordinate guesses for labeled buttons.
-     */
-    private fun tapByText(label: String): String? {
-        val file = "/data/local/tmp/controller_ui.xml"
-        val dump = RootShell.exec(
-            "uiautomator dump $file >/dev/null 2>&1; cat $file 2>/dev/null; rm -f $file",
-            20000
-        )
-        if (dump.stdout.isBlank() || dump.stdout.length < 500) {
-            return "no UI labels available (this app hides its accessibility tree); use tap with coordinates read from the grid"
-        }
-        val center = UiDump.findCenter(dump.stdout, label)
-            ?: return "no view labeled \"$label\""
-        return run("input tap ${center.first} ${center.second}")
-    }
-
-    /**
-     * Types into the focused field. `input text` handles ASCII reliably;
-     * anything else (Chinese, emoji, …) goes through the clipboard plus a
-     * synthetic KEYCODE_PASTE, which `input text` cannot express.
-     */
-    private fun typeText(text: String): String? {
-        if (text.all { it.code in 0x20..0x7e }) {
-            return run("input text ${RootShell.shellQuote(text)}")
-        }
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("controller", text))
-        mainHandler.postDelayed({ clipboard.clearPrimaryClip() }, 3000)
-        Thread.sleep(250)
-        return run("input keyevent KEYCODE_PASTE")
-    }
-
     /** Appends one message to the conversation, re-reading the store so nothing gets lost. */
     private fun appendMessage(conversationId: Long, message: ChatMessage) {
-        val all = ConversationStore.loadAll(prefs)
-        val conversation = all.find { it.id == conversationId }
-        if (conversation == null) {
-            all.add(
-                0,
-                ConversationStore.Conversation(
-                    conversationId,
-                    getString(R.string.agent_chat_title),
-                    mutableListOf(message)
-                )
-            )
-        } else {
-            conversation.messages.add(message)
-        }
-        ConversationStore.saveAll(prefs, all)
+        ConversationStore.append(
+            prefs, conversationId, message, getString(R.string.agent_chat_title)
+        )
     }
 
     private fun createChannel() {

@@ -1,4 +1,4 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.data
 
 import android.content.SharedPreferences
 import org.json.JSONArray
@@ -27,6 +27,23 @@ object ConversationStore {
 
     fun saveAll(prefs: SharedPreferences, conversations: List<Conversation>) {
         synchronized(LOCK) { doSave(prefs, conversations) }
+    }
+
+    /** Appends one message atomically, creating the conversation if needed. */
+    fun append(
+        prefs: SharedPreferences,
+        conversationId: Long,
+        message: ChatMessage,
+        defaultTitle: String
+    ) = synchronized(LOCK) {
+        val all = doLoad(prefs)
+        val conversation = all.find { it.id == conversationId }
+        if (conversation == null) {
+            all.add(0, Conversation(conversationId, defaultTitle, mutableListOf(message)))
+        } else {
+            conversation.messages.add(message)
+        }
+        doSave(prefs, all)
     }
 
     private fun doLoad(prefs: SharedPreferences): MutableList<Conversation> {

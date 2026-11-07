@@ -1,4 +1,4 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.agent
 
 import java.io.IOException
 import java.util.concurrent.TimeUnit

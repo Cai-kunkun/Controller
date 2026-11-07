@@ -30,7 +30,7 @@
 
         <!-- Root-powered automation loop: screenshot -> LLM -> input actions. -->
         <service
-            android:name=".AgentService"
+            android:name=".agent.AgentService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property

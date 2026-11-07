@@ -1,4 +1,4 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.data
 
 data class ChatMessage(
     val role: String,

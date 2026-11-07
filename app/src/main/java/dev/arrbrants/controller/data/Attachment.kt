@@ -1,4 +1,4 @@
-package dev.arrbrants.controller
+package dev.arrbrants.controller.data
 
 /** A file the user attached to a chat message. */
 data class Attachment(

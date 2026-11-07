@@ -37,6 +37,37 @@ stops it.
 - **Chat UI** with conversation history, per-step screenshots, and settings for any
   OpenAI-compatible endpoint.
 
+## Project structure
+
+```
+app/src/main/java/dev/arrbrants/controller/
+├── MainActivity.kt          chat UI, streaming, attachments, stats panel
+├── SettingsActivity.kt      provider / context / tool settings
+├── agent/                   on-device automation runtime
+│   ├── AgentService.kt      foreground service + agent loop
+│   ├── AgentProtocol.kt     action protocol, DSML/JSON parsing, prompt
+│   ├── ActionExecutor.kt    root taps, typing, sequences
+│   ├── AgentOverlay.kt      floating status banner
+│   ├── RootShell.kt         su command helper
+│   ├── ScreenCapture.kt     screencap + coordinate grid
+│   ├── ShotThumbs.kt        thumbnail cache
+│   └── UiDump.kt            uiautomator label lookup
+├── data/                    models + persistence
+│   ├── AppPrefs.kt          typed preference access
+│   ├── SecurePrefs.kt       Keystore-backed API key
+│   ├── ConversationStore.kt conversations/messages JSON store
+│   ├── ChatMessage.kt, Attachment.kt
+│   ├── AttachmentStore.kt   picked files → prompt parts
+│   └── UsageStats.kt        cache/context counters
+├── llm/                     provider I/O
+│   ├── LlmClient.kt         chat completions, SSE, tools, usage
+│   ├── MessageMapper.kt     ChatMessage → prompt messages
+│   └── TokenBudget.kt       token estimates + formatting
+└── ui/                      recycler adapters
+    ├── ChatAdapter.kt
+    └── ConversationAdapter.kt
+```
+
 ## Requirements
 
 - A rooted device (KernelSU / Magisk). Grant root to Controller manually in the manager.

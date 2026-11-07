@@ -1,5 +1,7 @@
 package dev.arrbrants.controller
 
+import dev.arrbrants.controller.data.AppPrefs
+import dev.arrbrants.controller.data.SecurePrefs
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
@@ -17,29 +19,29 @@ class SettingsActivity : AppCompatActivity() {
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.setNavigationOnClickListener { finish() }
 
-        val prefs = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE)
+        val prefs = AppPrefs.get(this)
         val url = findViewById<TextInputEditText>(R.id.etUrl)
         val key = findViewById<TextInputEditText>(R.id.etKey)
         val model = findViewById<TextInputEditText>(R.id.etModel)
         val contextWindow = findViewById<TextInputEditText>(R.id.etContext)
         val nativeTools = findViewById<MaterialSwitch>(R.id.switchTools)
 
-        url.setText(prefs.getString(MainActivity.KEY_URL, ""))
+        url.setText(prefs.getString(AppPrefs.KEY_URL, ""))
         key.setText(SecurePrefs.apiKey(this))
-        model.setText(prefs.getString(MainActivity.KEY_MODEL, ""))
-        nativeTools.isChecked = prefs.getBoolean(MainActivity.KEY_NATIVE_TOOLS, true)
-        val limit = prefs.getInt(MainActivity.KEY_CONTEXT_WINDOW, MainActivity.DEFAULT_CONTEXT_WINDOW)
+        model.setText(prefs.getString(AppPrefs.KEY_MODEL, ""))
+        nativeTools.isChecked = prefs.getBoolean(AppPrefs.KEY_NATIVE_TOOLS, true)
+        val limit = prefs.getInt(AppPrefs.KEY_CONTEXT_WINDOW, AppPrefs.DEFAULT_CONTEXT_WINDOW)
         contextWindow.setText(limit.toString())
 
         findViewById<View>(R.id.btnSave).setOnClickListener {
             val parsedLimit = contextWindow.text.toString().trim().toIntOrNull()
-                ?.coerceIn(8_192, 4_000_000)
-                ?: MainActivity.DEFAULT_CONTEXT_WINDOW
+                ?.coerceIn(AppPrefs.MIN_CONTEXT_WINDOW, 4_000_000)
+                ?: AppPrefs.DEFAULT_CONTEXT_WINDOW
             prefs.edit()
-                .putString(MainActivity.KEY_URL, url.text.toString().trim())
-                .putString(MainActivity.KEY_MODEL, model.text.toString().trim())
-                .putInt(MainActivity.KEY_CONTEXT_WINDOW, parsedLimit)
-                .putBoolean(MainActivity.KEY_NATIVE_TOOLS, nativeTools.isChecked)
+                .putString(AppPrefs.KEY_URL, url.text.toString().trim())
+                .putString(AppPrefs.KEY_MODEL, model.text.toString().trim())
+                .putInt(AppPrefs.KEY_CONTEXT_WINDOW, parsedLimit)
+                .putBoolean(AppPrefs.KEY_NATIVE_TOOLS, nativeTools.isChecked)
                 .apply()
             SecurePrefs.setApiKey(this, key.text.toString().trim())
             Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()

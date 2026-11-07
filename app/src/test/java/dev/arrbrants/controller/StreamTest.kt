@@ -1,5 +1,6 @@
 package dev.arrbrants.controller
 
+import dev.arrbrants.controller.llm.LlmClient
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
