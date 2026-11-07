@@ -82,6 +82,10 @@ class AgentService : Service() {
     private var overlay: AgentOverlay? = null
     /** Real prompt size from the last successful reply; drives compaction. */
     @Volatile private var lastPromptTokens = 0L
+    /** Raw text of the model's latest reply, echoed back to it in history. */
+    @Volatile private var lastReplyText = ""
+    /** Tool call ids awaiting a result message before the next request. */
+    private var pendingToolCallIds: List<String> = emptyList()
 
     override fun onCreate() {
         super.onCreate()
@@ -114,12 +118,14 @@ class AgentService : Service() {
     private fun runAgent(conversationId: Long) {
         running = true
         lastPromptTokens = 0L
+        pendingToolCallIds = emptyList()
         val app = applicationContext
         try {
             val cfg = LlmClient.Config(
                 prefs.getString(MainActivity.KEY_URL, "") ?: "",
-                prefs.getString(MainActivity.KEY_API, "") ?: "",
-                prefs.getString(MainActivity.KEY_MODEL, "") ?: ""
+                SecurePrefs.apiKey(this),
+                prefs.getString(MainActivity.KEY_MODEL, "") ?: "",
+                prefs.getBoolean(MainActivity.KEY_NATIVE_TOOLS, true)
             )
             if (cfg.baseUrl.isBlank() || cfg.model.isBlank()) {
                 appendMessage(conversationId, ChatMessage("assistant", getString(R.string.need_setup)))
@@ -159,7 +165,10 @@ class AgentService : Service() {
             for (m in (seed?.messages ?: emptyList<ChatMessage>()).takeLast(30)) {
                 if (m.role != "user" && m.role != "assistant") continue
                 if (m.content.isBlank()) continue
-                val msg = LlmClient.Msg(m.role, m.content)
+                // Assistant steps carry the raw provider reply (usually DSML);
+                // give the model its own native format back.
+                val text = if (m.role == "assistant") m.rawContent ?: m.content else m.content
+                val msg = LlmClient.Msg(m.role, text)
                 if (seededTokens + msg.approxTokens > 6000) break
                 msgs.add(msg)
                 seededTokens += msg.approxTokens
@@ -203,7 +212,7 @@ class AgentService : Service() {
                 val userMsg = LlmClient.Msg(
                     "user",
                     AgentProtocol.stepPrompt(step, lastResult, notes, nudge),
-                    dataUrl,
+                    listOf(dataUrl),
                     TokenBudget.image(shot.sentWidth, shot.sentHeight)
                 )
                 nudge = null
@@ -249,6 +258,7 @@ class AgentService : Service() {
                     )
                     stepLog.add("$step. look at the screen")
                     if (stepLog.size > STEP_LOG_MAX) stepLog.removeAt(0)
+                    finishToolCalls(msgs, "ok")
                     if (!stopRequested) Thread.sleep(400)
                     continue
                 }
@@ -257,7 +267,12 @@ class AgentService : Service() {
                     val path = ScreenCapture.saveShot(app, conversationId, shot.jpeg)
                     appendMessage(
                         conversationId,
-                        ChatMessage("assistant", getString(R.string.agent_done, action.summary), path)
+                        ChatMessage(
+                            "assistant",
+                            getString(R.string.agent_done, action.summary),
+                            path,
+                            rawContent = lastReplyText
+                        )
                     )
                     overlay?.update(getString(R.string.agent_finished), action.summary, null)
                     finished = true
@@ -269,7 +284,12 @@ class AgentService : Service() {
                     val path = ScreenCapture.saveShot(app, conversationId, shot.jpeg)
                     appendMessage(
                         conversationId,
-                        ChatMessage("assistant", getString(R.string.agent_ask, action.question), path)
+                        ChatMessage(
+                            "assistant",
+                            getString(R.string.agent_ask, action.question),
+                            path,
+                            rawContent = lastReplyText
+                        )
                     )
                     overlay?.update(getString(R.string.agent_finished), action.question, null)
                     finished = true
@@ -279,8 +299,12 @@ class AgentService : Service() {
                 val desc = AgentProtocol.describe(action)
                 val header = getString(R.string.agent_step, step, desc)
                 val shotPath = ScreenCapture.saveShot(app, conversationId, shot.jpeg)
-                val bubble = if (screenStep.thought.isBlank()) header else "$header\n${screenStep.thought}"
-                appendMessage(conversationId, ChatMessage("assistant", bubble, shotPath))
+                val thought = AgentProtocol.cleanThought(screenStep.thought)
+                val bubble = if (thought.isBlank()) header else "$header\n$thought"
+                appendMessage(
+                    conversationId,
+                    ChatMessage("assistant", bubble, shotPath, rawContent = lastReplyText)
+                )
                 updateNotification(header)
                 overlay?.update(getString(R.string.agent_running, step), desc, screenStep.thought)
 
@@ -306,6 +330,7 @@ class AgentService : Service() {
 
                 val failure = execute(action, getString(R.string.agent_running, step))
                 lastResult = failure ?: "ok"
+                finishToolCalls(msgs, lastResult)
                 stepLog.add("$step. ${AgentProtocol.describe(action)} → ${failure ?: "ok"}")
                 if (stepLog.size > STEP_LOG_MAX) stepLog.removeAt(0)
 
@@ -417,6 +442,15 @@ class AgentService : Service() {
     /** Thrown when the model answers in plain text instead of emitting an action. */
     private class FinalAnswer(val text: String) : Exception()
 
+    /** Answers every pending native tool call so the next request stays valid. */
+    private fun finishToolCalls(msgs: MutableList<LlmClient.Msg>, result: String) {
+        if (pendingToolCallIds.isEmpty()) return
+        for (id in pendingToolCallIds) {
+            msgs.add(LlmClient.Msg("tool", result, toolCallId = id))
+        }
+        pendingToolCallIds = emptyList()
+    }
+
     /** Asks the model for one action, giving it up to two chances to fix bad JSON. */
     private fun requestAction(
         cfg: LlmClient.Config,
@@ -428,19 +462,48 @@ class AgentService : Service() {
             val reply = LlmClient.send(cfg, msgs)
             lastPromptTokens = reply.usage.promptTokens
             StatsStore.record(prefs, conversationId, reply.usage)
+
+            // Native function calling: structured tool_calls in the reply.
+            val toolStep = AgentProtocol.stepFromToolCalls(reply.toolCalls)
+            if (toolStep != null) {
+                lastReplyText = AgentProtocol.toDsml(reply.toolCalls)
+                pendingToolCallIds = reply.toolCalls.map { it.id }
+                msgs.add(LlmClient.Msg("assistant", reply.text, toolCalls = reply.toolCalls))
+                return toolStep
+            }
+            if (reply.toolCalls.isNotEmpty()) {
+                // Tool call we could not parse: keep the protocol valid and retry.
+                lastError = "invalid tool call arguments"
+                msgs.add(LlmClient.Msg("assistant", reply.text, toolCalls = reply.toolCalls))
+                for (call in reply.toolCalls) {
+                    msgs.add(
+                        LlmClient.Msg("tool", "error: invalid arguments", toolCallId = call.id)
+                    )
+                }
+                msgs.add(
+                    LlmClient.Msg(
+                        "user",
+                        "That tool call was invalid. Call device_action again with a valid " +
+                            "action and its fields, or reply in plain text to answer the user."
+                    )
+                )
+                return@repeat
+            }
+
+            lastReplyText = reply.text
             msgs.add(LlmClient.Msg("assistant", reply.text))
             AgentProtocol.asActionOrNull(reply.text)?.let { return it }
             val trimmed = reply.text.trim()
-            if (!trimmed.startsWith("{") && !trimmed.startsWith("```")) {
+            if (!AgentProtocol.looksLikeActionStart(trimmed)) {
                 // The model decided to answer the user instead of continuing.
                 throw FinalAnswer(reply.text)
             }
-            lastError = "invalid JSON action"
+            lastError = "invalid action"
             msgs.add(
                 LlmClient.Msg(
                     "user",
-                    "Your reply could not be used: it must be exactly one valid JSON action. " +
-                        "Reply with one JSON action, or with plain text to answer the user and stop."
+                    "Your reply could not be used. Reply with exactly one device_action DSML " +
+                        "tool call, or with plain text to answer the user and stop."
                 )
             )
         }

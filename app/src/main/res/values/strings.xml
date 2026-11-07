@@ -62,4 +62,9 @@
     <string name="agent_auto_start">🖐 Using your phone…</string>
     <string name="agent_looking">Looking at the screen…</string>
     <string name="thinking">Thinking…</string>
+    <string name="attach_file">Attach file</string>
+    <string name="stats_expand">Show details</string>
+    <string name="stats_collapse">Hide details</string>
+    <string name="native_tools">Native tool calling</string>
+    <string name="native_tools_note">Send the device_action schema so the model emits native DSML tool calls. Turn off if your endpoint rejects tools; text DSML/JSON is still parsed.</string>
 </resources>

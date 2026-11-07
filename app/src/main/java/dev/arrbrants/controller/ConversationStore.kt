@@ -40,11 +40,28 @@ object ConversationStore {
                 val msgArr = obj.getJSONArray("messages")
                 for (j in 0 until msgArr.length()) {
                     val m = msgArr.getJSONObject(j)
+                    val attachments = mutableListOf<Attachment>()
+                    val attArr = m.optJSONArray("attachments")
+                    if (attArr != null) {
+                        for (k in 0 until attArr.length()) {
+                            val a = attArr.getJSONObject(k)
+                            attachments.add(
+                                Attachment(
+                                    a.getString("path"),
+                                    a.getString("name"),
+                                    a.optString("mime", "application/octet-stream"),
+                                    a.optLong("size", 0)
+                                )
+                            )
+                        }
+                    }
                     msgs.add(
                         ChatMessage(
                             m.getString("role"),
                             m.getString("content"),
-                            if (m.has("imagePath")) m.getString("imagePath") else null
+                            if (m.has("imagePath")) m.getString("imagePath") else null,
+                            attachments,
+                            if (m.has("rawContent")) m.getString("rawContent") else null
                         )
                     )
                 }
@@ -63,6 +80,20 @@ object ConversationStore {
             for (m in c.messages) {
                 val msg = JSONObject().put("role", m.role).put("content", m.content)
                 if (m.imagePath != null) msg.put("imagePath", m.imagePath)
+                if (m.rawContent != null) msg.put("rawContent", m.rawContent)
+                if (m.attachments.isNotEmpty()) {
+                    val attArr = JSONArray()
+                    for (a in m.attachments) {
+                        attArr.put(
+                            JSONObject()
+                                .put("path", a.path)
+                                .put("name", a.name)
+                                .put("mime", a.mime)
+                                .put("size", a.size)
+                        )
+                    }
+                    msg.put("attachments", attArr)
+                }
                 msgArr.put(msg)
             }
             arr.put(

@@ -5,10 +5,12 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
@@ -18,8 +20,10 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -39,10 +43,13 @@ class MainActivity : AppCompatActivity() {
         const val KEY_MODEL = "model"
         const val KEY_CONTEXT_WINDOW = "context_window"
         const val KEY_CURRENT = "current_id"
+        const val KEY_STATS_COLLAPSED = "stats_collapsed"
+        const val KEY_NATIVE_TOOLS = "native_tools"
         const val DEFAULT_CONTEXT_WINDOW = 128_000
         const val TITLE_MAX = 24
         /** Text-only context budget for the routing request, in tokens. */
         private const val CHAT_CONTEXT_TOKENS = 12_000L
+        private const val MAX_IMAGES_SHOWN = 3
     }
 
     private var history: MutableList<ChatMessage> = ArrayList()
@@ -66,7 +73,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statMiss: TextView
     private lateinit var statRate: TextView
     private lateinit var statTps: TextView
+    private lateinit var statsBody: View
+    private lateinit var statsToggle: ImageView
+    private lateinit var pendingRow: LinearLayout
+    private lateinit var pendingScroll: View
+    private var statsCollapsed = false
+    private val pending = ArrayList<Attachment>()
     private var busy = false
+
+    private val filePicker =
+        registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            if (!uris.isNullOrEmpty()) importAttachments(uris)
+        }
 
     private val handler = Handler(Looper.getMainLooper())
     private val liveRefresh = object : Runnable {
@@ -103,6 +121,10 @@ class MainActivity : AppCompatActivity() {
         statMiss = findViewById(R.id.statMiss)
         statRate = findViewById(R.id.statRate)
         statTps = findViewById(R.id.statTps)
+        statsBody = findViewById(R.id.statsBody)
+        statsToggle = findViewById(R.id.statsToggle)
+        pendingRow = findViewById(R.id.pendingRow)
+        pendingScroll = findViewById(R.id.pendingScroll)
         adapter = ChatAdapter()
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
@@ -115,6 +137,12 @@ class MainActivity : AppCompatActivity() {
         toolbar.setNavigationOnClickListener { drawerLayout.openDrawer(Gravity.START) }
 
         findViewById<View>(R.id.btnNewChat).setOnClickListener { newChat() }
+        findViewById<View>(R.id.btnAttach).setOnClickListener {
+            filePicker.launch(arrayOf("*/*"))
+        }
+        findViewById<View>(R.id.statsHeader).setOnClickListener { toggleStats() }
+        statsCollapsed = prefs.getBoolean(KEY_STATS_COLLAPSED, false)
+        applyStatsCollapsed()
 
         input.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
@@ -182,6 +210,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun newChat() {
         drawerLayout.closeDrawer(Gravity.START)
+        clearPending()
         history = ArrayList()
         currentId = -1L
         prefs.edit().putLong(KEY_CURRENT, currentId).apply()
@@ -191,6 +220,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openConversation(conv: ConversationStore.Conversation) {
         drawerLayout.closeDrawer(Gravity.START)
+        clearPending()
         currentId = conv.id
         history = conv.messages
         prefs.edit().putLong(KEY_CURRENT, currentId).apply()
@@ -201,6 +231,9 @@ class MainActivity : AppCompatActivity() {
     private fun deleteConversation(conv: ConversationStore.Conversation) {
         conversations.remove(conv)
         ScreenCapture.deleteShots(this, conv.messages)
+        for (m in conv.messages) {
+            AttachmentStore.delete(this, m.attachments)
+        }
         StatsStore.remove(prefs, conv.id)
         if (currentId == conv.id) {
             history = ArrayList()
@@ -223,12 +256,13 @@ class MainActivity : AppCompatActivity() {
         }
         if (busy) return
         val text = input.text.toString().trim()
-        if (text.isEmpty()) return
+        if (text.isEmpty() && pending.isEmpty()) return
 
         val cfg = LlmClient.Config(
             prefs.getString(KEY_URL, "") ?: "",
-            prefs.getString(KEY_API, "") ?: "",
-            prefs.getString(KEY_MODEL, "") ?: ""
+            SecurePrefs.apiKey(this),
+            prefs.getString(KEY_MODEL, "") ?: "",
+            prefs.getBoolean(KEY_NATIVE_TOOLS, true)
         )
         if (cfg.baseUrl.isBlank()) {
             Toast.makeText(this, R.string.need_setup, Toast.LENGTH_LONG).show()
@@ -237,18 +271,22 @@ class MainActivity : AppCompatActivity() {
         }
 
         input.setText("")
-        history.add(ChatMessage("user", text))
+        val outgoing = ArrayList(pending)
+        pending.clear()
+        refreshPending()
+        history.add(ChatMessage("user", text, null, outgoing))
         syncCurrent()
         val conversationId = currentId
-        val requestMessages = buildChatMessages()
+        val snapshot = history.toList()
 
-        history.add(ChatMessage("assistant", ""))
+        history.add(ChatMessage("assistant", getString(R.string.thinking)))
         val index = history.size - 1
         adapter.notifyItemInserted(index)
         list.scrollToPosition(index)
         busy = true
 
         Thread {
+            val requestMessages = buildChatMessages(snapshot)
             val builder = StringBuilder()
             var decided = false
             var plainText = false
@@ -262,7 +300,7 @@ class MainActivity : AppCompatActivity() {
                         val start = builder.toString().trimStart()
                         if (start.isNotEmpty()) {
                             decided = true
-                            plainText = !start.startsWith("{") && !start.startsWith("```")
+                            plainText = !AgentProtocol.looksLikeActionStart(start)
                         }
                     }
                     val now = System.currentTimeMillis()
@@ -300,7 +338,8 @@ class MainActivity : AppCompatActivity() {
         if (conversationId >= 0 && reply.usage.promptTokens > 0) {
             StatsStore.record(prefs, conversationId, reply.usage)
         }
-        val step = AgentProtocol.asActionOrNull(reply.text)
+        val step = AgentProtocol.stepFromToolCalls(reply.toolCalls)
+            ?: AgentProtocol.asActionOrNull(reply.text)
         when {
             step == null -> updateBubble(index, reply.text)
 
@@ -332,13 +371,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Text-only context for the routing/chat request, newest messages first. */
-    private fun buildChatMessages(): List<LlmClient.Msg> {
+    private fun buildChatMessages(source: List<ChatMessage>): List<LlmClient.Msg> {
         val selected = ArrayList<LlmClient.Msg>()
         var tokens = 0L
-        for (m in history.asReversed()) {
-            if (m.content.isBlank()) continue
-            val msg = LlmClient.Msg(m.role, m.content)
-            if (tokens + msg.approxTokens > CHAT_CONTEXT_TOKENS) break
+        for (m in source.asReversed()) {
+            if (m.content.isBlank() && m.rawContent.isNullOrBlank() && m.attachments.isEmpty()) continue
+            val msg = toLlmMessage(m)
+            if (tokens + msg.approxTokens > CHAT_CONTEXT_TOKENS && selected.isNotEmpty()) break
             selected.add(0, msg)
             tokens += msg.approxTokens
         }
@@ -346,6 +385,28 @@ class MainActivity : AppCompatActivity() {
             add(LlmClient.Msg("system", AgentProtocol.systemPrompt()))
             addAll(selected)
         }
+    }
+
+    /** Turns one stored message into a prompt message, inlining attachments. */
+    private fun toLlmMessage(m: ChatMessage): LlmClient.Msg {
+        // Assistant steps carry the model's raw DSML reply; send that back
+        // verbatim instead of the human-readable bubble.
+        val base = if (m.role == "assistant") m.rawContent ?: m.content else m.content
+        if (m.attachments.isEmpty()) return LlmClient.Msg(m.role, base)
+        val images = AttachmentStore.imageDataUrls(this, m.attachments)
+        val extra = StringBuilder()
+        for (a in m.attachments) {
+            if (a.isImage) continue
+            val textText = AttachmentStore.readText(this, a)
+            if (textText != null) {
+                extra.append("\n\n[Attached file: ").append(a.name).append("]\n").append(textText)
+            } else {
+                extra.append("\n\n[Attached file: ").append(a.name)
+                    .append(" (").append(a.mime).append(", ").append(a.size).append(" bytes)")
+                    .append(" — binary content not sent]")
+            }
+        }
+        return LlmClient.Msg(m.role, base + extra, images, images.size * 1400)
     }
 
     private fun ensureNotificationPermission() {
@@ -356,12 +417,78 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Copies picked documents into app storage and stages them for the next send. */
+    private fun importAttachments(uris: List<Uri>) {
+        val conversationId = currentId
+        Thread {
+            val imported = ArrayList<Attachment>()
+            for (uri in uris) {
+                try {
+                    AttachmentStore.copyIn(this, conversationId, uri)?.let { imported.add(it) }
+                } catch (e: Exception) {
+                    // Unreadable file: skip it rather than fail the whole picker.
+                }
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (imported.isNotEmpty()) {
+                    pending.addAll(imported)
+                    refreshPending()
+                }
+            }
+        }.start()
+    }
+
+    private fun refreshPending() {
+        pendingRow.removeAllViews()
+        pendingScroll.visibility = if (pending.isEmpty()) View.GONE else View.VISIBLE
+        for (a in pending) {
+            val chip = layoutInflater
+                .inflate(R.layout.item_attachment_chip, pendingRow, false) as TextView
+            chip.text = (if (a.isImage) "🖼 " else "📎 ") + a.name
+            chip.setOnClickListener {
+                pending.remove(a)
+                AttachmentStore.delete(this, listOf(a))
+                refreshPending()
+            }
+            pendingRow.addView(chip)
+        }
+    }
+
+    private fun clearPending() {
+        if (pending.isNotEmpty()) {
+            AttachmentStore.delete(this, pending.toList())
+            pending.clear()
+        }
+        refreshPending()
+    }
+
+    private fun toggleStats() {
+        statsCollapsed = !statsCollapsed
+        prefs.edit().putBoolean(KEY_STATS_COLLAPSED, statsCollapsed).apply()
+        applyStatsCollapsed()
+    }
+
+    private fun applyStatsCollapsed() {
+        statsBody.visibility = if (statsCollapsed) View.GONE else View.VISIBLE
+        statsToggle.setImageResource(
+            if (statsCollapsed) R.drawable.ic_expand_more else R.drawable.ic_expand_less
+        )
+        statsToggle.contentDescription = getString(
+            if (statsCollapsed) R.string.stats_expand else R.string.stats_collapse
+        )
+    }
+
     /** Registers a fresh conversation on the first message and persists state. */
     private fun syncCurrent() {
         if (currentId == -1L) {
-            val title = history.firstOrNull { it.role == "user" }
-                ?.content?.take(TITLE_MAX)
-                ?: getString(R.string.new_chat)
+            val first = history.firstOrNull { it.role == "user" }
+            val title = first?.let { m ->
+                m.content.take(TITLE_MAX).ifBlank {
+                    m.attachments.firstOrNull()?.name?.take(TITLE_MAX)
+                        ?: getString(R.string.new_chat)
+                }
+            } ?: getString(R.string.new_chat)
             val conv = ConversationStore.Conversation(
                 System.currentTimeMillis(), title, history
             )
@@ -451,13 +578,57 @@ class MainActivity : AppCompatActivity() {
                 holder.thumb.visibility = View.GONE
                 holder.thumb.setImageDrawable(null)
             }
+            holder.attachments?.let { bindAttachments(it, msg) }
+        }
+
+        private fun bindAttachments(container: LinearLayout, msg: ChatMessage) {
+            container.removeAllViews()
+            if (msg.attachments.isEmpty()) {
+                container.visibility = View.GONE
+                return
+            }
+            container.visibility = View.VISIBLE
+            val context = container.context
+            var imagesShown = 0
+            for (a in msg.attachments) {
+                if (a.isImage && imagesShown < MAX_IMAGES_SHOWN) {
+                    val image = ShotThumbs.get(context, a.path)
+                    if (image != null) {
+                        val view = ImageView(context)
+                        view.setImageBitmap(image)
+                        view.scaleType = ImageView.ScaleType.CENTER_CROP
+                        view.layoutParams = LinearLayout.LayoutParams(dp(160), dp(120)).apply {
+                            topMargin = dp(4)
+                        }
+                        container.addView(view)
+                        imagesShown++
+                        continue
+                    }
+                }
+                val chip = TextView(context)
+                chip.text = (if (a.isImage) "🖼 " else "📎 ") + a.name
+                chip.textSize = 12f
+                chip.maxLines = 1
+                chip.ellipsize = TextUtils.TruncateAt.END
+                chip.setBackgroundResource(R.drawable.bg_chip)
+                chip.setPadding(dp(10), dp(6), dp(10), dp(6))
+                chip.layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(4) }
+                container.addView(chip)
+            }
         }
     }
 
     private class BubbleViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val text: TextView = view.findViewById(R.id.content)
         val thumb: ImageView = view.findViewById(R.id.thumb)
+        val attachments: LinearLayout? = view.findViewById(R.id.attachments)
     }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     private inner class ConversationAdapter : RecyclerView.Adapter<ConversationViewHolder>() {
 

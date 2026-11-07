@@ -19,6 +19,7 @@ class StreamTest {
     private lateinit var server: ServerSocket
     private lateinit var worker: Thread
     @Volatile private var requestBody = ""
+    @Volatile private var toolCallMode = false
 
     @Before
     fun setUp() {
@@ -44,15 +45,34 @@ class StreamTest {
                     }
                     requestBody = String(body, 0, read)
 
-                    val sse = buildString {
-                        append("data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\n")
-                        append("data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\n")
-                        append(
-                            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":120," +
-                                "\"completion_tokens\":2,\"prompt_cache_hit_tokens\":100," +
-                                "\"prompt_cache_miss_tokens\":20}}\n\n"
-                        )
-                        append("data: [DONE]\n\n")
+                    val sse = if (toolCallMode) {
+                        buildString {
+                            append(
+                                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0," +
+                                    "\"id\":\"call_1\",\"type\":\"function\",\"function\":" +
+                                    "{\"name\":\"device_action\",\"arguments\":\"{\\\"action\\\":\"}}]}}]}\n\n"
+                            )
+                            append(
+                                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0," +
+                                    "\"function\":{\"arguments\":\"\\\"look\\\"}\"}}]}}]}\n\n"
+                            )
+                            append(
+                                "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":50," +
+                                    "\"completion_tokens\":5}}\n\n"
+                            )
+                            append("data: [DONE]\n\n")
+                        }
+                    } else {
+                        buildString {
+                            append("data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\n")
+                            append("data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\n")
+                            append(
+                                "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":120," +
+                                    "\"completion_tokens\":2,\"prompt_cache_hit_tokens\":100," +
+                                    "\"prompt_cache_miss_tokens\":20}}\n\n"
+                            )
+                            append("data: [DONE]\n\n")
+                        }
                     }
                     val payload = sse.toByteArray()
                     val out = socket.getOutputStream()
@@ -93,5 +113,20 @@ class StreamTest {
         assertTrue(reply.usage.tokensPerSecond > 0)
         assertTrue(requestBody.contains("\"stream\":true"))
         assertTrue(requestBody.contains("include_usage"))
+        assertTrue(requestBody.contains("\"tools\""))
+    }
+
+    @Test
+    fun streamsNativeToolCalls() {
+        toolCallMode = true
+        val reply = LlmClient.stream(
+            LlmClient.Config("http://127.0.0.1:${server.localPort}", "", "test-model"),
+            listOf(LlmClient.Msg("user", "hi"))
+        ) { }
+
+        assertEquals(1, reply.toolCalls.size)
+        assertEquals("device_action", reply.toolCalls[0].name)
+        assertEquals("""{"action":"look"}""", reply.toolCalls[0].arguments)
+        assertTrue(reply.text.isEmpty())
     }
 }

@@ -13,15 +13,32 @@ import java.net.URL
  */
 object LlmClient {
 
-    data class Config(val baseUrl: String, val apiKey: String, val model: String)
+    data class Config(
+        val baseUrl: String,
+        val apiKey: String,
+        val model: String,
+        /** Declare the device_action tool so the model can emit native tool calls. */
+        val useTools: Boolean = true
+    )
 
-    /** One outgoing message; a non-null [imageDataUrl] adds an image content part. */
+    /** A structured tool call returned by the provider. */
+    data class ToolCall(
+        val id: String,
+        val name: String,
+        val arguments: String
+    )
+
+    /** One outgoing message; non-empty [imageDataUrls] add image content parts. */
     data class Msg(
         val role: String,
         val text: String,
-        val imageDataUrl: String? = null,
-        /** Estimated prompt cost of the attached image, used for budgeting. */
-        val imageTokens: Int = 0
+        val imageDataUrls: List<String> = emptyList(),
+        /** Estimated prompt cost of the attached images, used for budgeting. */
+        val imageTokens: Int = 0,
+        /** Set on assistant messages that called a tool. */
+        val toolCalls: List<ToolCall> = emptyList(),
+        /** Set on role="tool" result messages. */
+        val toolCallId: String? = null
     ) {
         val approxTokens: Int get() = TokenBudget.text(text) + imageTokens
     }
@@ -46,7 +63,11 @@ object LlmClient {
             }
     }
 
-    data class Reply(val text: String, val usage: Usage)
+    data class Reply(
+        val text: String,
+        val usage: Usage,
+        val toolCalls: List<ToolCall> = emptyList()
+    )
 
     /** Normalize a user-provided base URL into a full chat/completions endpoint. */
     fun endpoint(baseUrl: String): String {
@@ -78,7 +99,12 @@ object LlmClient {
             null -> choice.optString("text", "")
             else -> c.toString()
         }
-        return Reply(content.ifBlank { "(empty response)" }, parseUsage(root, elapsed))
+        val calls = message?.optJSONArray("tool_calls")?.let { parseToolCalls(it) }
+            ?: emptyList()
+        val replyText = content.ifBlank {
+            if (calls.isEmpty()) "(empty response)" else ""
+        }
+        return Reply(replyText, parseUsage(root, elapsed), calls)
     }
 
     /**
@@ -97,6 +123,7 @@ object LlmClient {
         }
 
         val sb = StringBuilder()
+        val callAccs = LinkedHashMap<Int, ToolCallAcc>()
         var firstTokenAt = 0L
         var lastTokenAt = 0L
         var usage: Usage? = null
@@ -119,6 +146,26 @@ object LlmClient {
                 }
                 val choices = chunk.optJSONArray("choices") ?: continue
                 val delta = choices.optJSONObject(0)?.optJSONObject("delta") ?: continue
+
+                // Native tool calls stream as fragments indexed by call.
+                val toolDeltas = delta.optJSONArray("tool_calls")
+                if (toolDeltas != null) {
+                    for (i in 0 until toolDeltas.length()) {
+                        val part = toolDeltas.optJSONObject(i) ?: continue
+                        val index = part.optInt("index", i)
+                        val acc = callAccs.getOrPut(index) { ToolCallAcc() }
+                        if (part.has("id")) acc.id = part.optString("id")
+                        val fn = part.optJSONObject("function")
+                        if (fn != null) {
+                            if (fn.has("name")) acc.name = fn.optString("name")
+                            if (fn.has("arguments")) acc.args.append(fn.optString("arguments"))
+                        }
+                    }
+                    val now = System.currentTimeMillis()
+                    if (firstTokenAt == 0L) firstTokenAt = now
+                    lastTokenAt = now
+                }
+
                 if (delta.isNull("content")) continue
                 val piece = delta.optString("content", "")
                 if (piece.isEmpty()) continue
@@ -132,8 +179,15 @@ object LlmClient {
 
         val finished = System.currentTimeMillis()
         val text = sb.toString()
+        val calls = callAccs.entries.sortedBy { it.key }.map { (index, acc) ->
+            LlmClient.ToolCall(
+                acc.id.ifBlank { "call_$index" },
+                acc.name,
+                acc.args.toString()
+            )
+        }
         return Reply(
-            text.ifBlank { "(empty response)" },
+            text.ifBlank { if (calls.isEmpty()) "(empty response)" else "" },
             Usage(
                 promptTokens = usage?.promptTokens ?: 0,
                 completionTokens = usage?.completionTokens
@@ -143,37 +197,158 @@ object LlmClient {
                 elapsedMs = finished - started,
                 firstTokenMs = if (firstTokenAt > 0) firstTokenAt - started else 0,
                 decodeMs = if (firstTokenAt > 0) lastTokenAt - firstTokenAt else 0
-            )
+            ),
+            calls
         )
+    }
+
+    private class ToolCallAcc(
+        var id: String = "",
+        var name: String = "",
+        val args: StringBuilder = StringBuilder()
+    )
+
+    private fun parseToolCalls(arr: JSONArray): List<ToolCall> {
+        val out = ArrayList<ToolCall>()
+        for (i in 0 until arr.length()) {
+            val call = arr.optJSONObject(i) ?: continue
+            val fn = call.optJSONObject("function") ?: continue
+            out.add(
+                ToolCall(
+                    call.optString("id", "call_$i"),
+                    fn.optString("name", ""),
+                    fn.opt("arguments")?.toString().orEmpty()
+                )
+            )
+        }
+        return out
     }
 
     /** Builds the request body shared by the streaming and blocking paths. */
     private fun buildBody(cfg: Config, msgs: List<Msg>, stream: Boolean): JSONObject {
         val arr = JSONArray()
         for (m in msgs) {
-            val content: Any = if (m.imageDataUrl == null) {
-                m.text
-            } else {
-                JSONArray()
-                    .put(JSONObject().put("type", "text").put("text", m.text))
-                    .put(
-                        JSONObject()
-                            .put("type", "image_url")
-                            .put("image_url", JSONObject().put("url", m.imageDataUrl))
-                    )
-            }
-            arr.put(JSONObject().put("role", m.role).put("content", content))
+            arr.put(messageJson(m))
         }
         val body = JSONObject()
             .put("model", cfg.model)
             .put("stream", stream)
             .put("messages", arr)
+        if (cfg.useTools) {
+            body.put("tools", toolsSchema())
+            body.put("tool_choice", "auto")
+        }
         if (stream) {
             // Ask OpenAI-compatible providers to report usage in the last chunk.
             body.put("stream_options", JSONObject().put("include_usage", true))
         }
         return body
     }
+
+    private fun messageJson(m: Msg): JSONObject {
+        if (m.role == "tool") {
+            return JSONObject()
+                .put("role", "tool")
+                .put("tool_call_id", m.toolCallId ?: "")
+                .put("content", m.text)
+        }
+        if (m.toolCalls.isNotEmpty()) {
+            val calls = JSONArray()
+            for (c in m.toolCalls) {
+                calls.put(
+                    JSONObject()
+                        .put("id", c.id)
+                        .put("type", "function")
+                        .put(
+                            "function",
+                            JSONObject().put("name", c.name).put("arguments", c.arguments)
+                        )
+                )
+            }
+            return JSONObject()
+                .put("role", "assistant")
+                .put("content", if (m.text.isBlank()) JSONObject.NULL else m.text)
+                .put("tool_calls", calls)
+        }
+        val content: Any = if (m.imageDataUrls.isEmpty()) {
+            m.text
+        } else {
+            JSONArray()
+                .put(JSONObject().put("type", "text").put("text", m.text))
+                .apply {
+                    for (url in m.imageDataUrls) {
+                        put(
+                            JSONObject()
+                                .put("type", "image_url")
+                                .put("image_url", JSONObject().put("url", url))
+                        )
+                    }
+                }
+        }
+        return JSONObject().put("role", m.role).put("content", content)
+    }
+
+    /** The single tool the model may call to operate the phone. */
+    private fun toolsSchema(): JSONArray = JSONArray().put(
+        JSONObject()
+            .put("type", "function")
+            .put(
+                "function",
+                JSONObject()
+                    .put("name", "device_action")
+                    .put(
+                        "description",
+                        "Operate the Android phone: exactly one UI action per call. " +
+                            "Use action=look when you need to see the current screen first."
+                    )
+                    .put(
+                        "parameters",
+                        JSONObject()
+                            .put("type", "object")
+                            .put(
+                                "properties",
+                                JSONObject()
+                                    .put("thought", stringProp("Why you do this"))
+                                    .put(
+                                        "action",
+                                        JSONObject()
+                                            .put("type", "string")
+                                            .put(
+                                                "enum",
+                                                JSONArray(
+                                                    listOf(
+                                                        "look", "tap", "double_tap", "long_press",
+                                                        "tap_text", "swipe", "text", "key", "wait",
+                                                        "done", "ask"
+                                                    )
+                                                )
+                                            )
+                                            .put("description", "The action to perform")
+                                    )
+                                    .put("x", intProp("X coordinate, 0-1000"))
+                                    .put("y", intProp("Y coordinate, 0-1000"))
+                                    .put("x1", intProp("Swipe start X, 0-1000"))
+                                    .put("y1", intProp("Swipe start Y, 0-1000"))
+                                    .put("x2", intProp("Swipe end X, 0-1000"))
+                                    .put("y2", intProp("Swipe end Y, 0-1000"))
+                                    .put("duration", intProp("Swipe duration in ms"))
+                                    .put("ms", intProp("Wait duration in ms"))
+                                    .put("text", stringProp("Text to tap by label, or text to type"))
+                                    .put("key", stringProp("back | home | enter | recents"))
+                                    .put("summary", stringProp("What was accomplished (done)"))
+                                    .put("question", stringProp("Question for the user (ask)"))
+                                    .put("notes", stringProp("Scratchpad carried across steps"))
+                            )
+                            .put("required", JSONArray(listOf("thought", "action")))
+                    )
+            )
+    )
+
+    private fun stringProp(description: String): JSONObject =
+        JSONObject().put("type", "string").put("description", description)
+
+    private fun intProp(description: String): JSONObject =
+        JSONObject().put("type", "integer").put("description", description)
 
     private fun open(cfg: Config, body: JSONObject): HttpURLConnection {
         if (cfg.baseUrl.isBlank()) throw IOException("Provider URL is not set")

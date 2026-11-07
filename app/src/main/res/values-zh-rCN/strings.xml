@@ -61,4 +61,9 @@
     <string name="agent_auto_start">🖐 开始操作手机…</string>
     <string name="agent_looking">正在查看屏幕…</string>
     <string name="thinking">正在思考…</string>
+    <string name="attach_file">添加附件</string>
+    <string name="stats_expand">展开详情</string>
+    <string name="stats_collapse">收起详情</string>
+    <string name="native_tools">原生工具调用</string>
+    <string name="native_tools_note">向模型声明 device_action 工具，让它直接产出原生 DSML 工具调用。若服务商不支持 tools 可关闭；关闭后仍会解析文本形式的 DSML/JSON。</string>
 </resources>

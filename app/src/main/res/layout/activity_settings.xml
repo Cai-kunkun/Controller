@@ -76,13 +76,16 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="14dp"
-                    android:hint="@string/label_key">
+                    android:hint="@string/label_key"
+                    app:endIconMode="password_toggle"
+                    app:endIconTint="?attr/colorOnSurfaceVariant">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etKey"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:inputType="textVisiblePassword" />
+                        android:importantForAutofill="no"
+                        android:inputType="textPassword" />
 
                 </com.google.android.material.textfield.TextInputLayout>
 
@@ -100,6 +103,23 @@
                         android:inputType="textNoSuggestions" />
 
                 </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchTools"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:checked="true"
+                    android:text="@string/native_tools"
+                    android:textColor="?attr/colorOnSurface" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/native_tools_note"
+                    android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
 
             </LinearLayout>
 

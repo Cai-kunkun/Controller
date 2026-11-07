@@ -39,42 +39,45 @@ object AgentProtocol {
         You are Controller, the user's on-device assistant. You can both chat and operate the user's Android phone.
 
         Decide what each message needs:
-        - Pure conversation (answer a question, explain, write, translate, summarize, plan, code, small talk): reply in plain text. Do NOT emit JSON.
-        - A phone task (open or use an app, tap, type, scroll, read the screen, change a setting, follow a flow in another app): operate the phone by replying with exactly ONE JSON action and no other text.
-        - If the task depends on what is currently on screen and you have not seen it, start with {"thought":"...","action":"look"}.
-        - Never just say that you will do something: to actually operate the phone you must reply with a JSON action.
+        - Pure conversation (answer a question, explain, write, translate, summarize, plan, code, small talk): reply in plain text. Do NOT emit a tool call.
+        - A phone task (open or use an app, tap, type, scroll, read the screen, change a setting, follow a flow in another app): operate the phone by replying with exactly ONE DSML tool call and no other text.
+        - If the task depends on what is currently on screen and you have not seen it, call device_action with action="look".
+        - Never just say that you will do something: to actually operate the phone you must emit the DSML tool call.
 
-        While operating you receive a screenshot after every action and keep replying with one JSON action. When the task is finished reply {"action":"done","summary":"..."}. If the user only needed an answer that you can now give, reply in plain text instead — that ends the operation.
+        To operate the phone, reply with exactly this structure (the delimiter is the fullwidth vertical bar ｜, U+FF5C — never ASCII |, never JSON, never markdown fences):
+
+        <｜DSML｜tool_calls>
+        <｜DSML｜invoke name="device_action">
+        <｜DSML｜parameter name="thought" string="true">why you do this</｜DSML｜parameter>
+        <｜DSML｜parameter name="action" string="true">tap_text</｜DSML｜parameter>
+        <｜DSML｜parameter name="text" string="true">发送</｜DSML｜parameter>
+        </｜DSML｜invoke>
+        </｜DSML｜tool_calls>
+
+        Always include "thought" and "action". Add the fields the action needs:
+        - look: (no extra fields) capture the screen without touching it
+        - tap, double_tap, long_press: "x" and "y" on the 0-1000 coordinate scale (string="false")
+        - tap_text: "text" — the visible label or accessibility label of the view to tap
+        - swipe: "x1","y1","x2","y2" and "duration" in ms (string="false")
+        - text: "text" to type into the focused field
+        - key: "key" — back | home | enter | recents
+        - wait: "ms" (string="false")
+        - done: "summary"
+        - ask: "question"
+        Numbers may use string="false"; all other values use string="true".
+        You may optionally add "notes": a scratchpad carried across steps. When present it replaces the previous notes. Example:
+        <｜DSML｜parameter name="notes" string="true">Read 1/3: Google security alert. Remaining: Tavily, Rotem Weiss.</｜DSML｜parameter>
+
+        While operating you receive a screenshot after every action and keep replying with one DSML tool call. When the task is finished call action="done". If the user only needed an answer that you can now give, reply in plain text instead — that ends the operation.
 
         Coordinates use a 0-1000 scale relative to the screenshot: x=0 is the left edge, x=1000 the right edge, y=0 the top edge, y=1000 the bottom edge.
-
-        Actions:
-        {"thought":"why you do this","action":"look"}        // capture the screen without touching it
-        {"thought":"why you do this","action":"tap","x":500,"y":250}
-        {"thought":"...","action":"long_press","x":500,"y":250}   // press and hold; e.g. long-press the WeChat Moments camera icon to post text-only
-        {"thought":"...","action":"double_tap","x":500,"y":400}   // two quick taps; e.g. on Douyin, double-tapping the video likes it
-        {"thought":"...","action":"tap_text","text":"发送"}      // taps the view whose label contains this text — much more reliable than guessing coordinates for buttons, menu items, tabs
-        {"thought":"...","action":"swipe","x1":500,"y1":800,"x2":500,"y2":200,"duration":300}   // scroll down: swipe from lower to upper
-        {"thought":"...","action":"text","text":"hello"}      // types into the focused input; any language
-        {"thought":"...","action":"key","key":"back"}         // back | home | enter | recents
-        {"thought":"...","action":"wait","ms":1500}           // wait for the UI to settle
-        {"thought":"...","action":"done","summary":"what was accomplished"}
-        {"thought":"...","action":"ask","question":"..."}     // only when truly blocked or information is missing
-
-        A step may also chain several actions that run in the given order inside ONE step:
-        {"thought":"why this whole chain is safe","action":"sequence","steps":[{"action":"tap_text","text":"WLAN"},{"action":"wait","ms":600},{"action":"tap_text","text":"设置"}]}
-        Every element of "steps" is a full action like the ones above (a sequence may contain another sequence), and "done"/"ask" may not appear inside one.
-
-        Every reply may also include a "notes" field: a scratchpad that is carried across steps and shown back to you on the next step. Use it to remember anything you still need — especially content you read (e.g. email texts you are collecting for a summary) and which items you have already processed. When present it replaces the previous notes. Example:
-        {"thought":"...","action":"tap_text","text":"Next email","notes":"Read 1/3: Google security alert - new sign-in on Pixel, 2 days ago. Remaining: Tavily, Rotem Weiss."}
 
         Rules while operating the phone:
         - Every screenshot has a faint magenta grid: the lines are labeled 100..900 on the 0-1000 coordinate scale — read coordinates off this grid so taps land precisely.
         - Your full step history (all previous screenshots and your own replies) is attached to the conversation; rely on it instead of revisiting screens you have already seen.
         - Keep your notes up to date: when you read or learn something you will need later (like an email to summarize), write it into "notes" immediately — you cannot go back to earlier screenshots and nothing else is remembered.
-        - One action per reply, or one sequence of actions. After each step you receive a fresh screenshot.
-        - Use a sequence when a chain of actions is certain from the current screenshot — opening a menu and then picking a known item, tapping a field and typing, dismissing a predictable popup. You never see the screen between the actions of a sequence, so only chain steps that do not depend on new content appearing (use tap_text, not guessed coordinates, for later elements), keep chains short, and put a short wait before an action that needs the UI to settle.
-        - If any part of a chain depends on something you cannot see yet, send a single action instead and look at the next screenshot.
+        - One action per reply. After each step you receive a fresh screenshot.
+        - If any part of the task depends on something you cannot see yet, send a single action and look at the next screenshot.
         - A small status banner titled "Controller" may appear at the very top of the screen. Ignore it; never tap it.
         - Prefer tap_text for any target with a visible label (buttons, menu items, input fields). Use tap with coordinates only for unlabeled targets or icons.
         - If a coordinate tap does not do what you expected, do not retry the same spot — switch to tap_text with the visible label.
@@ -93,7 +96,7 @@ object AgentProtocol {
         - Prefer visible UI elements; avoid destructive or irreversible actions unless the task asks for them.
         - If an action did not work, do not repeat it blindly; try a different approach.
         - A search showing no results does not mean your text was not entered; try a different wording (e.g. the device's local language variant) before retyping.
-        - Reply "done" as soon as the task is complete.
+        - Call action="done" as soon as the task is complete.
     """.trimIndent()
 
     fun stepPrompt(step: Int, lastResult: String?, notes: String?, advice: String?): String {
@@ -107,7 +110,7 @@ object AgentProtocol {
         if (!advice.isNullOrBlank()) {
             sb.append("\nAdvice: ").append(advice)
         }
-        sb.append("\nHere is the current screenshot. Reply with one JSON action to keep operating, ")
+        sb.append("\nHere is the current screenshot. Reply with one DSML tool call to keep operating, ")
         sb.append("or with plain text to answer the user and stop.")
         return sb.toString()
     }
@@ -115,15 +118,166 @@ object AgentProtocol {
     /**
      * Returns the parsed action when the whole reply is a single JSON object
      * (optionally wrapped in a markdown fence), or null for a normal chat reply.
+     * DeepSeek can also emit its native DSML tool-call markup even when asked
+     * for bare JSON; that is recognised and converted as well.
      */
     fun asActionOrNull(reply: String): Step? {
         var t = reply.trim()
         if (t.startsWith("```")) {
             t = t.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
         }
-        if (!t.startsWith("{")) return null
+        if (t.startsWith("{")) {
+            return try {
+                parse(t)
+            } catch (e: IOException) {
+                null
+            }
+        }
+        return parseDsml(reply)
+    }
+
+    /** Converts a structured native tool call into a [Step]. */
+    fun stepFromToolCalls(calls: List<LlmClient.ToolCall>): Step? {
+        val call = calls.firstOrNull { it.name == "device_action" }
+            ?: calls.firstOrNull()
+            ?: return null
+        val obj = try {
+            JSONObject(call.arguments)
+        } catch (e: Exception) {
+            return null
+        }
         return try {
-            parse(t)
+            Step(
+                obj.optString("thought").trim(),
+                parseAction(obj, 1),
+                obj.optString("notes").trim().ifBlank { null }
+            )
+        } catch (e: IOException) {
+            null
+        }
+    }
+
+    /** Serializes structured tool calls back into canonical DSML history. */
+    fun toDsml(calls: List<LlmClient.ToolCall>): String {
+        if (calls.isEmpty()) return ""
+        val sb = StringBuilder()
+        sb.append("<｜DSML｜tool_calls>\n")
+        for (call in calls) {
+            sb.append("<｜DSML｜invoke name=\"").append(call.name).append("\">\n")
+            val obj = try {
+                JSONObject(call.arguments)
+            } catch (e: Exception) {
+                null
+            }
+            if (obj != null) {
+                for (key in obj.keys()) {
+                    val value = obj.opt(key)
+                    if (value == null || value == JSONObject.NULL) continue
+                    val isString = value is String
+                    sb.append("<｜DSML｜parameter name=\"").append(key)
+                        .append("\" string=\"").append(isString).append("\">")
+                        .append(value.toString())
+                        .append("</｜DSML｜parameter>\n")
+                }
+            }
+            sb.append("</｜DSML｜invoke>\n")
+        }
+        sb.append("</｜DSML｜tool_calls>")
+        return sb.toString()
+    }
+
+    /** True for replies that start like a structured action (DSML or JSON). */
+    fun looksLikeActionStart(reply: String): Boolean {
+        val t = reply.trimStart()
+        if (t.startsWith("{") || t.startsWith("```")) return true
+        if (t.startsWith("<｜") || t.startsWith("<|")) {
+            return t.contains("DSML", ignoreCase = true)
+        }
+        return false
+    }
+
+    /**
+     * Strips leaked JSON/DSML from a thought before it is shown in the chat.
+     * The model sometimes appends a fenced copy of its own action.
+     */
+    fun cleanThought(text: String): String {
+        if (text.isBlank()) return ""
+        var t = text
+        val fence = t.indexOf("```")
+        if (fence >= 0) t = t.substring(0, fence)
+        val fullwidth = t.indexOf("<｜DSML", ignoreCase = true)
+        if (fullwidth >= 0) t = t.substring(0, fullwidth)
+        val ascii = t.indexOf("<|DSML", ignoreCase = true)
+        if (ascii >= 0) t = t.substring(0, ascii)
+        return t.trim()
+    }
+
+    /** True when a message contains provider tool-call markup. */
+    fun containsToolMarkup(text: String): Boolean =
+        text.contains("DSML", ignoreCase = true)
+
+    private val DSML_OPEN = "<\\|{1,2}\\s*DSML\\s*\\|{1,2}"
+
+    private val DSML_PARAM = Regex(
+        "$DSML_OPEN\\s*parameter\\b[^>]*?\\bname=\"([^\"]+)\"[^>]*>" +
+            "([\\s\\S]*?)</\\|{1,2}\\s*DSML\\s*\\|{1,2}\\s*parameter>",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** Tolerates the malformed `<｜｜DSML｜｜ invoke name="thought">...` variant. */
+    private val DSML_INVOKE = Regex(
+        "$DSML_OPEN\\s*invoke\\b[^>]*?\\bname=\"([^\"]+)\"[^>]*>" +
+            "([\\s\\S]*?)</\\|{1,2}\\s*DSML\\s*\\|{1,2}\\s*(?:parameter|invoke)>",
+        RegexOption.IGNORE_CASE
+    )
+
+    /**
+     * Converts DeepSeek's `<｜｜DSML｜｜ parameter name="...">value</...>` blocks
+     * into a regular action. Only scalar fields are supported.
+     */
+    private fun parseDsml(reply: String): Step? {
+        if (!containsToolMarkup(reply)) return null
+        val normalized = reply.replace('\uFF5C', '|')
+        val fields = LinkedHashMap<String, String>()
+        for (match in DSML_PARAM.findAll(normalized)) {
+            val name = match.groupValues[1].trim()
+            val value = match.groupValues[2].trim()
+            if (value.contains("<｜DSML", ignoreCase = true) ||
+                value.contains("<|DSML", ignoreCase = true)
+            ) {
+                continue
+            }
+            fields[name] = value
+        }
+        // Legacy/malformed variant: the thought is on the invoke tag itself.
+        for (match in DSML_INVOKE.findAll(normalized)) {
+            val name = match.groupValues[1].trim()
+            val value = match.groupValues[2].trim()
+            if (name in fields) continue
+            if (value.contains("<|DSML|", ignoreCase = true)) continue
+            fields[name] = value
+        }
+        val action = fields["action"]?.trim()?.lowercase().orEmpty()
+        if (action.isEmpty()) return null
+
+        val numeric = setOf("x", "y", "x1", "y1", "x2", "y2", "duration", "ms")
+        val allowed = numeric + setOf("action", "text", "key", "summary", "question")
+        val obj = JSONObject()
+        for ((key, value) in fields) {
+            if (key !in allowed) continue
+            if (key in numeric) {
+                val number = value.trim().toIntOrNull() ?: continue
+                obj.put(key, number)
+            } else {
+                obj.put(key, value)
+            }
+        }
+        return try {
+            Step(
+                fields["thought"].orEmpty().trim(),
+                parseAction(obj, 1),
+                fields["notes"]?.trim()?.ifBlank { null }
+            )
         } catch (e: IOException) {
             null
         }
