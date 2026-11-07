@@ -2,6 +2,13 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc6] - 2026-11-07
+
+- **Declarative plugins**: import JSON plugins in Settings, enable/disable/delete,
+  and expose them to the model as `plugin_<id>` tools. Steps are whitelisted
+  (`shell`, `http`, UI `action`), imported plugins start disabled, and enabling
+  shell/HTTP steps asks for confirmation.
+
 ## [1.0.0-rc5] - 2026-11-07
 
 - **Chain of thought**: DeepSeek `reasoning_content` is captured for chat and

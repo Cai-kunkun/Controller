@@ -75,4 +75,20 @@
     <string name="thinking_high">High</string>
     <string name="thinking_max">Max</string>
     <string name="reasoning_title">思考过程</string>
+    <string name="plugins_title">插件</string>
+    <string name="plugins_manage">管理插件</string>
+    <string name="plugins_import">导入插件（JSON）</string>
+    <string name="plugins_empty">还没有插件</string>
+    <string name="plugins_no_description">无描述</string>
+    <string name="plugins_meta">%1$s · %2$d 个步骤</string>
+    <string name="plugins_danger_note">插件可以执行 shell 命令和网络请求，只启用你信任的插件。</string>
+    <string name="plugins_enable_danger_title">启用插件？</string>
+    <string name="plugins_enable_danger">%1$s 包含 shell 或 HTTP 步骤，可以执行命令和访问网络。仍要启用吗？</string>
+    <string name="plugins_enable">启用</string>
+    <string name="plugins_cancel">取消</string>
+    <string name="plugins_delete_title">删除插件</string>
+    <string name="plugins_delete_message">删除 %1$s？</string>
+    <string name="plugins_delete">删除</string>
+    <string name="plugins_import_ok">已导入 %1$s（默认关闭）</string>
+    <string name="plugins_import_failed">导入失败：插件文件无效</string>
 </resources>

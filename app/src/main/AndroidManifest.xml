@@ -28,6 +28,11 @@
             android:exported="false"
             android:label="@string/settings_title" />
 
+        <activity
+            android:name=".PluginsActivity"
+            android:exported="false"
+            android:label="@string/plugins_title" />
+
         <!-- Root-powered automation loop: screenshot -> LLM -> input actions. -->
         <service
             android:name=".agent.AgentService"

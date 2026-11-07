@@ -1,0 +1,30 @@
+{
+  "id": "battery_webhook",
+  "name": "Battery webhook",
+  "description": "Read the battery status and POST the dump to a URL you provide.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Endpoint that receives the battery dump"
+      }
+    },
+    "required": ["url"]
+  },
+  "steps": [
+    {
+      "type": "shell",
+      "command": "dumpsys battery"
+    },
+    {
+      "type": "http",
+      "method": "POST",
+      "url": "{{url}}",
+      "headers": {
+        "Content-Type": "text/plain"
+      },
+      "body": "{{result}}"
+    }
+  ]
+}

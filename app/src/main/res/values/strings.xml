@@ -76,4 +76,20 @@
     <string name="thinking_high">High</string>
     <string name="thinking_max">Max</string>
     <string name="reasoning_title">Thinking</string>
+    <string name="plugins_title">Plugins</string>
+    <string name="plugins_manage">Manage plugins</string>
+    <string name="plugins_import">Import plugin (JSON)</string>
+    <string name="plugins_empty">No plugins yet</string>
+    <string name="plugins_no_description">No description</string>
+    <string name="plugins_meta">%1$s · %2$d steps</string>
+    <string name="plugins_danger_note">Plugins can run shell commands and network requests. Only enable plugins you trust.</string>
+    <string name="plugins_enable_danger_title">Enable plugin?</string>
+    <string name="plugins_enable_danger">%1$s contains shell or HTTP steps. It can run commands and access the network. Enable anyway?</string>
+    <string name="plugins_enable">Enable</string>
+    <string name="plugins_cancel">Cancel</string>
+    <string name="plugins_delete_title">Delete plugin</string>
+    <string name="plugins_delete_message">Delete %1$s?</string>
+    <string name="plugins_delete">Delete</string>
+    <string name="plugins_import_ok">Imported %1$s (disabled)</string>
+    <string name="plugins_import_failed">Import failed: invalid plugin file</string>
 </resources>

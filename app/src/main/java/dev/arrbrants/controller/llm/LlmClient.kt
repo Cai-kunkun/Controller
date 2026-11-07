@@ -1,5 +1,6 @@
 package dev.arrbrants.controller.llm
 
+import dev.arrbrants.controller.data.Plugin
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -20,7 +21,9 @@ object LlmClient {
         /** Declare the device_action tool so the model can emit native tool calls. */
         val useTools: Boolean = true,
         /** DeepSeek `reasoning_effort`: "", none, low, high or max. */
-        val reasoningEffort: String = ""
+        val reasoningEffort: String = "",
+        /** Enabled declarative plugins, exposed as additional tools. */
+        val plugins: List<Plugin> = emptyList()
     )
 
     /** A structured tool call returned by the provider. */
@@ -255,7 +258,7 @@ object LlmClient {
             .put("stream", stream)
             .put("messages", arr)
         if (cfg.useTools) {
-            body.put("tools", toolsSchema())
+            body.put("tools", toolsSchema(cfg))
             body.put("tool_choice", "auto")
         }
         if (cfg.reasoningEffort.isNotBlank()) {
@@ -311,9 +314,15 @@ object LlmClient {
         return JSONObject().put("role", m.role).put("content", content)
     }
 
-    /** The single tool the model may call to operate the phone. */
-    private fun toolsSchema(): JSONArray = JSONArray().put(
-        JSONObject()
+    /** Tool list: the built-in device action plus every enabled plugin. */
+    private fun toolsSchema(cfg: Config): JSONArray {
+        val tools = JSONArray().put(deviceActionTool())
+        for (plugin in cfg.plugins) tools.put(plugin.toolJson())
+        return tools
+    }
+
+    /** The single built-in tool the model may call to operate the phone. */
+    private fun deviceActionTool(): JSONObject = JSONObject()
             .put("type", "function")
             .put(
                 "function",
@@ -365,7 +374,6 @@ object LlmClient {
                             .put("required", JSONArray(listOf("thought", "action")))
                     )
             )
-    )
 
     private fun stringProp(description: String): JSONObject =
         JSONObject().put("type", "string").put("description", description)

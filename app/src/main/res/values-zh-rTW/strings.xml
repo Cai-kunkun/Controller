@@ -75,4 +75,20 @@
     <string name="thinking_high">High</string>
     <string name="thinking_max">Max</string>
     <string name="reasoning_title">思考過程</string>
+    <string name="plugins_title">外掛</string>
+    <string name="plugins_manage">管理外掛</string>
+    <string name="plugins_import">匯入外掛（JSON）</string>
+    <string name="plugins_empty">還沒有外掛</string>
+    <string name="plugins_no_description">無描述</string>
+    <string name="plugins_meta">%1$s · %2$d 個步驟</string>
+    <string name="plugins_danger_note">外掛可以執行 shell 命令和網路請求，只啟用你信任的外掛。</string>
+    <string name="plugins_enable_danger_title">啟用外掛？</string>
+    <string name="plugins_enable_danger">%1$s 包含 shell 或 HTTP 步驟，可以執行命令和存取網路。仍要啟用嗎？</string>
+    <string name="plugins_enable">啟用</string>
+    <string name="plugins_cancel">取消</string>
+    <string name="plugins_delete_title">刪除外掛</string>
+    <string name="plugins_delete_message">刪除 %1$s？</string>
+    <string name="plugins_delete">刪除</string>
+    <string name="plugins_import_ok">已匯入 %1$s（預設關閉）</string>
+    <string name="plugins_import_failed">匯入失敗：外掛檔案無效</string>
 </resources>

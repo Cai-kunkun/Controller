@@ -2,6 +2,7 @@ package dev.arrbrants.controller
 
 import dev.arrbrants.controller.data.AppPrefs
 import dev.arrbrants.controller.data.SecurePrefs
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.TextView
@@ -57,6 +58,10 @@ class SettingsActivity : AppCompatActivity() {
 
         keyBalance.setOnClickListener { refreshBalance(keyBalance) }
         refreshBalance(keyBalance)
+
+        findViewById<View>(R.id.btnPlugins).setOnClickListener {
+            startActivity(Intent(this, PluginsActivity::class.java))
+        }
 
         findViewById<View>(R.id.btnSave).setOnClickListener {
             val parsedLimit = contextWindow.text.toString().trim().toIntOrNull()

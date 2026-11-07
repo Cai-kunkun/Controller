@@ -5,10 +5,13 @@ import dev.arrbrants.controller.R
 import dev.arrbrants.controller.data.AppPrefs
 import dev.arrbrants.controller.data.ChatMessage
 import dev.arrbrants.controller.data.ConversationStore
+import dev.arrbrants.controller.data.Plugin
+import dev.arrbrants.controller.data.PluginStore
 import dev.arrbrants.controller.data.StatsStore
 import dev.arrbrants.controller.llm.LlmClient
 import dev.arrbrants.controller.llm.MessageMapper
 import dev.arrbrants.controller.llm.TokenBudget
+import org.json.JSONObject
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -89,6 +92,10 @@ class AgentService : Service() {
             updateNotification(text)
             overlay?.update(label, text, null)
         }
+    }
+    /** Runs enabled declarative plugins (shell/http/UI steps). */
+    private val pluginExecutor by lazy {
+        PluginExecutor(this, executor) { text -> updateNotification(text) }
     }
     /** Kept as a field so a running sequence can refresh the banner per action. */
     private var overlay: AgentOverlay? = null
@@ -232,6 +239,18 @@ class AgentService : Service() {
                 msgs.add(userMsg)
                 val parsed = try {
                     requestAction(cfg, msgs, conversationId)
+                } catch (e: PluginHandled) {
+                    appendMessage(
+                        conversationId,
+                        ChatMessage("assistant", e.summary, reasoning = reasoningOrNull())
+                    )
+                    overlay?.update(
+                        getString(R.string.agent_running, step),
+                        e.summary.take(120),
+                        null
+                    )
+                    if (!stopRequested) Thread.sleep(600)
+                    continue
                 } catch (e: FinalAnswer) {
                     // The model chose to answer in plain text instead of acting.
                     appendMessage(
@@ -454,6 +473,9 @@ class AgentService : Service() {
     /** Thrown when the model answers in plain text instead of emitting an action. */
     private class FinalAnswer(val text: String) : Exception()
 
+    /** Thrown after a plugin call has been executed and its result echoed. */
+    private class PluginHandled(val summary: String) : Exception()
+
     /** Answers every pending native tool call so the next request stays valid. */
     private fun reasoningOrNull(): String? =
         lastReasoningText.takeIf { it.isNotBlank() }
@@ -479,6 +501,39 @@ class AgentService : Service() {
             lastPromptTokens = reply.usage.promptTokens
             lastReasoningText = reply.reasoning
             StatsStore.record(prefs, conversationId, reply.usage)
+
+            // Declarative plugins are plain tool calls named plugin_<id>.
+            val pluginCall = reply.toolCalls.firstOrNull { it.name.startsWith("plugin_") }
+            if (pluginCall != null) {
+                msgs.add(LlmClient.Msg("assistant", reply.text, toolCalls = reply.toolCalls))
+                val plugin = PluginStore.enabled(this)
+                    .find { it.toolName == pluginCall.name }
+                val result = if (plugin == null) {
+                    "error: plugin not found or disabled"
+                } else {
+                    val args = try {
+                        JSONObject(pluginCall.arguments)
+                    } catch (e: Exception) {
+                        JSONObject()
+                    }
+                    try {
+                        pluginExecutor.run(plugin, args)
+                    } catch (e: Exception) {
+                        "error: ${e.message ?: "plugin failed"}"
+                    }
+                }
+                for (call in reply.toolCalls) {
+                    val text = if (call.id == pluginCall.id) result else "not executed"
+                    msgs.add(LlmClient.Msg("tool", text, toolCallId = call.id))
+                }
+                lastReplyText = reply.text
+                val summary = if (plugin == null) {
+                    "🔌 ${pluginCall.name}: not enabled"
+                } else {
+                    "🔌 ${plugin.name}: ${result.take(300)}"
+                }
+                throw PluginHandled(summary)
+            }
 
             // Native function calling: structured tool_calls in the reply.
             val toolStep = AgentProtocol.stepFromToolCalls(reply.toolCalls)

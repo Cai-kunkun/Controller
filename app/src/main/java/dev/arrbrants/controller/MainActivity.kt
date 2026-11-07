@@ -345,7 +345,10 @@ class MainActivity : AppCompatActivity() {
         }
         val step = AgentProtocol.stepFromToolCalls(reply.toolCalls)
             ?: AgentProtocol.asActionOrNull(reply.text)
+        val pluginCall = reply.toolCalls.any { it.name.startsWith("plugin_") }
         when {
+            pluginCall -> startAgent(index, conversationId)
+
             step == null -> updateBubble(index, reply.text, reply.reasoning)
 
             step.action is AgentProtocol.Action.Done ->
@@ -362,16 +365,17 @@ class MainActivity : AppCompatActivity() {
                     reply.reasoning
                 )
 
-            else -> {
-                // The model wants to operate the phone: show a note, then let
-                // the service take over with screenshots and real actions.
-                updateBubble(index, getString(R.string.agent_auto_start))
-                ensureNotificationPermission()
-                AgentService.start(this, conversationId)
-                invalidateOptionsMenu()
-                moveTaskToBack(true)
-            }
+            else -> startAgent(index, conversationId)
         }
+    }
+
+    /** Hands the conversation to the foreground service for tools/screenshots. */
+    private fun startAgent(index: Int, conversationId: Long) {
+        updateBubble(index, getString(R.string.agent_auto_start))
+        ensureNotificationPermission()
+        AgentService.start(this, conversationId)
+        invalidateOptionsMenu()
+        moveTaskToBack(true)
     }
 
     /** Updates one bubble in place while a reply streams in. */

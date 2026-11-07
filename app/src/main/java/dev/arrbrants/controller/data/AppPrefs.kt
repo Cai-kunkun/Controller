@@ -34,7 +34,8 @@ object AppPrefs {
         SecurePrefs.apiKey(context),
         get(context).getString(KEY_MODEL, "").orEmpty(),
         nativeTools(context),
-        reasoning(context)
+        reasoning(context),
+        PluginStore.enabled(context)
     )
 
     fun contextWindow(context: Context): Int =
