@@ -7,7 +7,7 @@ endpoint, and executes the returned actions through `su` (KernelSU / Magisk).
 Core loop: **screenshot → LLM → action → repeat** until the task completes or the user
 stops it.
 
-**Status: 1.0.0-rc4** — release candidate ([CHANGELOG](CHANGELOG.md)).
+**Status: 1.0.0-rc5** — release candidate ([CHANGELOG](CHANGELOG.md)).
 
 ## Features
 
@@ -43,6 +43,9 @@ stops it.
   credit is shown in the stats header and under the API key field.
 - **Thinking effort**: choose `reasoning_effort` (`none` / `low` / `high` / `max`) or
   leave it to the provider.
+- **Chain of thought**: DeepSeek reasoning is kept with the message and shown as a
+  collapsed block (tap to expand) in a smaller font.
+- **Font**: bundled Google Sans Flex (SIL OFL) across the UI.
 - **Attachments**: pick images or text files. Images are downscaled and sent to the
   vision model; text is inlined; other binaries are announced by name/type.
 - **Encrypted API key**: stored in Keystore-backed `EncryptedSharedPreferences`,

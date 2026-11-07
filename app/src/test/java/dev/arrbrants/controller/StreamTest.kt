@@ -66,6 +66,8 @@ class StreamTest {
                         }
                     } else {
                         buildString {
+                            append("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Think \"}}]}\n\n")
+                            append("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"first\"}}]}\n\n")
                             append("data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\n")
                             append("data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\n")
                             append(
@@ -108,6 +110,7 @@ class StreamTest {
 
         assertEquals(listOf("Hel", "lo"), deltas)
         assertEquals("Hello", reply.text)
+        assertEquals("Think first", reply.reasoning)
         assertEquals(120L, reply.usage.promptTokens)
         assertEquals(2L, reply.usage.completionTokens)
         assertEquals(100L, reply.usage.cacheHitTokens)

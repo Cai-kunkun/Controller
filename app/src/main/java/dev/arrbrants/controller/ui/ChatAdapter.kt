@@ -49,6 +49,30 @@ class ChatAdapter(
             holder.thumb.setImageDrawable(null)
         }
         holder.attachments?.let { bindAttachments(it, msg) }
+        bindReasoning(holder, msg)
+    }
+
+    private fun bindReasoning(holder: BubbleViewHolder, msg: ChatMessage) {
+        val box = holder.reasoningBox ?: return
+        val toggle = holder.reasoningToggle ?: return
+        val body = holder.reasoningText ?: return
+        val reasoning = msg.reasoning
+        if (reasoning.isNullOrBlank()) {
+            box.visibility = View.GONE
+            return
+        }
+        val context = toggle.context
+        box.visibility = View.VISIBLE
+        body.text = reasoning
+        body.visibility = View.GONE
+        holder.reasoningExpanded = false
+        toggle.text = "▸ " + context.getString(R.string.reasoning_title)
+        toggle.setOnClickListener {
+            holder.reasoningExpanded = !holder.reasoningExpanded
+            body.visibility = if (holder.reasoningExpanded) View.VISIBLE else View.GONE
+            toggle.text = (if (holder.reasoningExpanded) "▾ " else "▸ ") +
+                context.getString(R.string.reasoning_title)
+        }
     }
 
     private fun bindAttachments(container: LinearLayout, msg: ChatMessage) {
@@ -98,6 +122,10 @@ class ChatAdapter(
         val text: TextView = view.findViewById(R.id.content)
         val thumb: ImageView = view.findViewById(R.id.thumb)
         val attachments: LinearLayout? = view.findViewById(R.id.attachments)
+        val reasoningBox: View? = view.findViewById(R.id.reasoningBox)
+        val reasoningToggle: TextView? = view.findViewById(R.id.reasoningToggle)
+        val reasoningText: TextView? = view.findViewById(R.id.reasoningText)
+        var reasoningExpanded: Boolean = false
     }
 
     private companion object {

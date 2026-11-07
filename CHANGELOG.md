@@ -2,6 +2,12 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc5] - 2026-11-07
+
+- **Chain of thought**: DeepSeek `reasoning_content` is captured for chat and
+  agent steps, shown as a collapsed "Thinking" block with a smaller font.
+- **Font**: the whole app uses Google Sans Flex (SIL OFL, bundled in `res/font`).
+
 ## [1.0.0-rc4] - 2026-11-07
 
 - Thinking-effort dropdown: add horizontal padding, 16sp text, and English

@@ -11,5 +11,7 @@ data class ChatMessage(
      * Raw provider reply (for actions: the DSML block). Kept out of the UI but
      * fed back to the model so it sees its own native tool-call format.
      */
-    val rawContent: String? = null
+    val rawContent: String? = null,
+    /** DeepSeek chain of thought, shown collapsed above the reply. */
+    val reasoning: String? = null
 )

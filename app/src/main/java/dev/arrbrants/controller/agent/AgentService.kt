@@ -96,6 +96,8 @@ class AgentService : Service() {
     @Volatile private var lastPromptTokens = 0L
     /** Raw text of the model's latest reply, echoed back to it in history. */
     @Volatile private var lastReplyText = ""
+    /** Latest DeepSeek chain of thought, stored with the step message. */
+    @Volatile private var lastReasoningText = ""
     /** Tool call ids awaiting a result message before the next request. */
     private var pendingToolCallIds: List<String> = emptyList()
 
@@ -130,6 +132,7 @@ class AgentService : Service() {
     private fun runAgent(conversationId: Long) {
         running = true
         lastPromptTokens = 0L
+        lastReasoningText = ""
         pendingToolCallIds = emptyList()
         val app = applicationContext
         try {
@@ -231,7 +234,10 @@ class AgentService : Service() {
                     requestAction(cfg, msgs, conversationId)
                 } catch (e: FinalAnswer) {
                     // The model chose to answer in plain text instead of acting.
-                    appendMessage(conversationId, ChatMessage("assistant", e.text))
+                    appendMessage(
+                        conversationId,
+                        ChatMessage("assistant", e.text, reasoning = reasoningOrNull())
+                    )
                     overlay?.update(getString(R.string.agent_finished), e.text.take(120), null)
                     finished = true
                     break
@@ -269,7 +275,8 @@ class AgentService : Service() {
                             "assistant",
                             getString(R.string.agent_done, action.summary),
                             path,
-                            rawContent = lastReplyText
+                            rawContent = lastReplyText,
+                            reasoning = reasoningOrNull()
                         )
                     )
                     overlay?.update(getString(R.string.agent_finished), action.summary, null)
@@ -286,7 +293,8 @@ class AgentService : Service() {
                             "assistant",
                             getString(R.string.agent_ask, action.question),
                             path,
-                            rawContent = lastReplyText
+                            rawContent = lastReplyText,
+                            reasoning = reasoningOrNull()
                         )
                     )
                     overlay?.update(getString(R.string.agent_finished), action.question, null)
@@ -301,7 +309,13 @@ class AgentService : Service() {
                 val bubble = if (thought.isBlank()) header else "$header\n$thought"
                 appendMessage(
                     conversationId,
-                    ChatMessage("assistant", bubble, shotPath, rawContent = lastReplyText)
+                    ChatMessage(
+                        "assistant",
+                        bubble,
+                        shotPath,
+                        rawContent = lastReplyText,
+                        reasoning = reasoningOrNull()
+                    )
                 )
                 updateNotification(header)
                 overlay?.update(getString(R.string.agent_running, step), desc, screenStep.thought)
@@ -441,6 +455,10 @@ class AgentService : Service() {
     private class FinalAnswer(val text: String) : Exception()
 
     /** Answers every pending native tool call so the next request stays valid. */
+    private fun reasoningOrNull(): String? =
+        lastReasoningText.takeIf { it.isNotBlank() }
+
+    /** Answers every pending native tool call so the next request stays valid. */
     private fun finishToolCalls(msgs: MutableList<LlmClient.Msg>, result: String) {
         if (pendingToolCallIds.isEmpty()) return
         for (id in pendingToolCallIds) {
@@ -459,6 +477,7 @@ class AgentService : Service() {
         repeat(3) {
             val reply = LlmClient.send(cfg, msgs)
             lastPromptTokens = reply.usage.promptTokens
+            lastReasoningText = reply.reasoning
             StatsStore.record(prefs, conversationId, reply.usage)
 
             // Native function calling: structured tool_calls in the reply.

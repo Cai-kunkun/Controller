@@ -78,7 +78,8 @@ object ConversationStore {
                             m.getString("content"),
                             if (m.has("imagePath")) m.getString("imagePath") else null,
                             attachments,
-                            if (m.has("rawContent")) m.getString("rawContent") else null
+                            if (m.has("rawContent")) m.getString("rawContent") else null,
+                            if (m.has("reasoning")) m.getString("reasoning") else null
                         )
                     )
                 }
@@ -98,6 +99,7 @@ object ConversationStore {
                 val msg = JSONObject().put("role", m.role).put("content", m.content)
                 if (m.imagePath != null) msg.put("imagePath", m.imagePath)
                 if (m.rawContent != null) msg.put("rawContent", m.rawContent)
+                if (m.reasoning != null) msg.put("reasoning", m.reasoning)
                 if (m.attachments.isNotEmpty()) {
                     val attArr = JSONArray()
                     for (a in m.attachments) {

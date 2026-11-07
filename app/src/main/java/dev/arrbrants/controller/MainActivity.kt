@@ -346,13 +346,21 @@ class MainActivity : AppCompatActivity() {
         val step = AgentProtocol.stepFromToolCalls(reply.toolCalls)
             ?: AgentProtocol.asActionOrNull(reply.text)
         when {
-            step == null -> updateBubble(index, reply.text)
+            step == null -> updateBubble(index, reply.text, reply.reasoning)
 
             step.action is AgentProtocol.Action.Done ->
-                updateBubble(index, getString(R.string.agent_done, step.action.summary))
+                updateBubble(
+                    index,
+                    getString(R.string.agent_done, step.action.summary),
+                    reply.reasoning
+                )
 
             step.action is AgentProtocol.Action.Ask ->
-                updateBubble(index, getString(R.string.agent_ask, step.action.question))
+                updateBubble(
+                    index,
+                    getString(R.string.agent_ask, step.action.question),
+                    reply.reasoning
+                )
 
             else -> {
                 // The model wants to operate the phone: show a note, then let
@@ -367,10 +375,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Updates one bubble in place while a reply streams in. */
-    private fun updateBubble(index: Int, text: String) {
+    private fun updateBubble(index: Int, text: String, reasoning: String? = null) {
         if (isFinishing || isDestroyed) return
         if (index !in history.indices) return
-        history[index] = history[index].copy(content = text)
+        history[index] = history[index].copy(
+            content = text,
+            reasoning = if (reasoning == null) {
+                history[index].reasoning
+            } else {
+                reasoning.takeIf { it.isNotBlank() }
+            }
+        )
         adapter.notifyItemChanged(index)
         list.scrollToPosition(index)
     }

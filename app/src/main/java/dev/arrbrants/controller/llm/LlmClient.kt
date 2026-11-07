@@ -68,7 +68,9 @@ object LlmClient {
     data class Reply(
         val text: String,
         val usage: Usage,
-        val toolCalls: List<ToolCall> = emptyList()
+        val toolCalls: List<ToolCall> = emptyList(),
+        /** DeepSeek `reasoning_content` (chain of thought), when present. */
+        val reasoning: String = ""
     )
 
     /** Normalize a user-provided base URL into a full chat/completions endpoint. */
@@ -103,10 +105,13 @@ object LlmClient {
         }
         val calls = message?.optJSONArray("tool_calls")?.let { parseToolCalls(it) }
             ?: emptyList()
+        val reasoning = message?.let {
+            if (it.isNull("reasoning_content")) "" else it.optString("reasoning_content", "")
+        }.orEmpty()
         val replyText = content.ifBlank {
             if (calls.isEmpty()) "(empty response)" else ""
         }
-        return Reply(replyText, parseUsage(root, elapsed), calls)
+        return Reply(replyText, parseUsage(root, elapsed), calls, reasoning)
     }
 
     /**
@@ -125,6 +130,7 @@ object LlmClient {
         }
 
         val sb = StringBuilder()
+        val reasoning = StringBuilder()
         val callAccs = LinkedHashMap<Int, ToolCallAcc>()
         var firstTokenAt = 0L
         var lastTokenAt = 0L
@@ -148,6 +154,17 @@ object LlmClient {
                 }
                 val choices = chunk.optJSONArray("choices") ?: continue
                 val delta = choices.optJSONObject(0)?.optJSONObject("delta") ?: continue
+
+                // DeepSeek streams the chain of thought separately.
+                if (!delta.isNull("reasoning_content")) {
+                    val piece = delta.optString("reasoning_content", "")
+                    if (piece.isNotEmpty()) {
+                        val now = System.currentTimeMillis()
+                        if (firstTokenAt == 0L) firstTokenAt = now
+                        lastTokenAt = now
+                        reasoning.append(piece)
+                    }
+                }
 
                 // Native tool calls stream as fragments indexed by call.
                 val toolDeltas = delta.optJSONArray("tool_calls")
@@ -200,7 +217,8 @@ object LlmClient {
                 firstTokenMs = if (firstTokenAt > 0) firstTokenAt - started else 0,
                 decodeMs = if (firstTokenAt > 0) lastTokenAt - firstTokenAt else 0
             ),
-            calls
+            calls,
+            reasoning.toString()
         )
     }
 

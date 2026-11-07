@@ -3,6 +3,7 @@
 
     <!-- Material 3 with dynamic color (Material You) + DayNight -->
     <style name="Theme.Controller" parent="Theme.Material3.DynamicColors.DayNight.NoActionBar">
+        <item name="fontFamily">@font/google_sans_flex</item>
         <item name="android:statusBarColor">?attr/colorSurface</item>
         <item name="android:navigationBarColor">?attr/colorSurface</item>
     </style>
