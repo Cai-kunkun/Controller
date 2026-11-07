@@ -2,6 +2,12 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc3] - 2026-11-07
+
+- **Thinking effort**: Settings now exposes `reasoning_effort` for DeepSeek V4
+  (`default`, `none`, `low`, `high`, `max`). Default sends nothing and follows
+  the provider; other OpenAI-compatible endpoints can ignore it.
+
 ## [1.0.0-rc2] - 2026-11-07
 
 - **DeepSeek balance**: when the official `api.deepseek.com` endpoint is

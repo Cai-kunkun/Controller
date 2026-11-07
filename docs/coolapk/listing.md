@@ -9,7 +9,7 @@
 | 分类 | 效率 / 工具 |
 | 标签 | AI、自动化、Root、效率、DeepSeek、Agent、Markdown |
 | 包名 | `dev.arrbrants.controller` |
-| 版本 | `1.0.0-rc2`（versionCode 25） |
+| 版本 | `1.0.0-rc3`（versionCode 26） |
 | 大小 | 约 5.5 MB |
 | 最低系统 | Android 7.0 |
 | 开源地址 | https://github.com/Cai-kunkun/Controller |
@@ -44,6 +44,7 @@ Controller 把「聊天」和「操作手机」合成了一个对话。
 - **附件**：图片会缩放后发给视觉模型，文本文件内联进对话
 - **密钥安全**：API Key 使用 Android Keystore 加密保存
 - **DeepSeek 余额**：官方接口下直接显示 API Key 剩余余额
+- **思考强度**：可选 none / low / high / max，或跟随服务商
 - **深色 UI**：Material 3，支持动态取色
 
 ## 使用步骤
@@ -64,10 +65,10 @@ Controller 把「聊天」和「操作手机」合成了一个对话。
 Root 自动化可以点击和输入屏幕上的任何位置。请在使用时盯着运行过程，确认目标应用和内容无误，
 并随时使用停止按钮。不要用它绕过应用的限制或进行违规操作。
 
-## 更新日志（1.0.0-rc2）
+## 更新日志（1.0.0-rc3）
 
-- 新增 DeepSeek 官方 API 余额显示（统计卡 + 设置页）
-- 其余同 1.0.0-rc1
+- 新增「思考强度」设置：none / low / high / max
+- 其他同 1.0.0-rc2
 
 ## 截图
 

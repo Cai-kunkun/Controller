@@ -67,4 +67,11 @@
     <string name="native_tools">原生工具呼叫</string>
     <string name="native_tools_note">向模型宣告 device_action 工具，讓它直接產出原生 DSML 工具呼叫。若服務商不支援 tools 可關閉；關閉後仍會解析文字形式的 DSML/JSON。</string>
     <string name="balance_format">餘額 %1$s</string>
+    <string name="thinking_effort">思考強度</string>
+    <string name="thinking_effort_note">DeepSeek V4：預設跟隨服務商；關閉不使用思考；低/高/最高逐級增加思考深度。其他服務商可能忽略或拒絕此參數。</string>
+    <string name="thinking_default">預設（跟隨服務商）</string>
+    <string name="thinking_none">關閉（不思考）</string>
+    <string name="thinking_low">低</string>
+    <string name="thinking_high">高</string>
+    <string name="thinking_max">最高</string>
 </resources>

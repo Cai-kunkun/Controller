@@ -18,7 +18,9 @@ object LlmClient {
         val apiKey: String,
         val model: String,
         /** Declare the device_action tool so the model can emit native tool calls. */
-        val useTools: Boolean = true
+        val useTools: Boolean = true,
+        /** DeepSeek `reasoning_effort`: "", none, low, high or max. */
+        val reasoningEffort: String = ""
     )
 
     /** A structured tool call returned by the provider. */
@@ -237,6 +239,9 @@ object LlmClient {
         if (cfg.useTools) {
             body.put("tools", toolsSchema())
             body.put("tool_choice", "auto")
+        }
+        if (cfg.reasoningEffort.isNotBlank()) {
+            body.put("reasoning_effort", cfg.reasoningEffort)
         }
         if (stream) {
             // Ask OpenAI-compatible providers to report usage in the last chunk.

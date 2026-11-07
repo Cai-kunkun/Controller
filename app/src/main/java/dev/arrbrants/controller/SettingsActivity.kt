@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
 import dev.arrbrants.controller.llm.DeepSeekBalance
 
@@ -28,11 +29,29 @@ class SettingsActivity : AppCompatActivity() {
         val contextWindow = findViewById<TextInputEditText>(R.id.etContext)
         val nativeTools = findViewById<MaterialSwitch>(R.id.switchTools)
         val keyBalance = findViewById<TextView>(R.id.keyBalance)
+        val thinking = findViewById<MaterialAutoCompleteTextView>(R.id.etThinking)
 
         url.setText(prefs.getString(AppPrefs.KEY_URL, ""))
         key.setText(SecurePrefs.apiKey(this))
         model.setText(prefs.getString(AppPrefs.KEY_MODEL, ""))
         nativeTools.isChecked = prefs.getBoolean(AppPrefs.KEY_NATIVE_TOOLS, true)
+
+        val thinkingLabels = arrayOf(
+            getString(R.string.thinking_default),
+            getString(R.string.thinking_none),
+            getString(R.string.thinking_low),
+            getString(R.string.thinking_high),
+            getString(R.string.thinking_max)
+        )
+        val thinkingValues = arrayOf("", "none", "low", "high", "max")
+        thinking.setSimpleItems(thinkingLabels)
+        val currentThinking =
+            thinkingValues.indexOf(prefs.getString(AppPrefs.KEY_REASONING, "") ?: "")
+        thinking.setText(
+            thinkingLabels[if (currentThinking >= 0) currentThinking else 0],
+            false
+        )
+
         val limit = prefs.getInt(AppPrefs.KEY_CONTEXT_WINDOW, AppPrefs.DEFAULT_CONTEXT_WINDOW)
         contextWindow.setText(limit.toString())
 
@@ -43,11 +62,14 @@ class SettingsActivity : AppCompatActivity() {
             val parsedLimit = contextWindow.text.toString().trim().toIntOrNull()
                 ?.coerceIn(AppPrefs.MIN_CONTEXT_WINDOW, 4_000_000)
                 ?: AppPrefs.DEFAULT_CONTEXT_WINDOW
+            val thinkingIndex = thinkingLabels.indexOf(thinking.text.toString())
+                .let { if (it >= 0) it else 0 }
             prefs.edit()
                 .putString(AppPrefs.KEY_URL, url.text.toString().trim())
                 .putString(AppPrefs.KEY_MODEL, model.text.toString().trim())
                 .putInt(AppPrefs.KEY_CONTEXT_WINDOW, parsedLimit)
                 .putBoolean(AppPrefs.KEY_NATIVE_TOOLS, nativeTools.isChecked)
+                .putString(AppPrefs.KEY_REASONING, thinkingValues[thinkingIndex])
                 .apply()
             SecurePrefs.setApiKey(this, key.text.toString().trim())
             Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()

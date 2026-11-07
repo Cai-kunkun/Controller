@@ -20,6 +20,7 @@ object AppPrefs {
     const val KEY_CURRENT = "current_id"
     const val KEY_STATS_COLLAPSED = "stats_collapsed"
     const val KEY_NATIVE_TOOLS = "native_tools"
+    const val KEY_REASONING = "reasoning_effort"
 
     const val DEFAULT_CONTEXT_WINDOW = 128_000
     const val MIN_CONTEXT_WINDOW = 8_192
@@ -32,7 +33,8 @@ object AppPrefs {
         get(context).getString(KEY_URL, "").orEmpty(),
         SecurePrefs.apiKey(context),
         get(context).getString(KEY_MODEL, "").orEmpty(),
-        nativeTools(context)
+        nativeTools(context),
+        reasoning(context)
     )
 
     fun contextWindow(context: Context): Int =
@@ -41,6 +43,10 @@ object AppPrefs {
 
     fun nativeTools(context: Context): Boolean =
         get(context).getBoolean(KEY_NATIVE_TOOLS, true)
+
+    /** "", none, low, high or max. Empty means "do not send". */
+    fun reasoning(context: Context): String =
+        get(context).getString(KEY_REASONING, "").orEmpty()
 
     fun statsCollapsed(context: Context): Boolean =
         get(context).getBoolean(KEY_STATS_COLLAPSED, false)

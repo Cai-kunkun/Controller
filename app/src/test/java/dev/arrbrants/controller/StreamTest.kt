@@ -3,6 +3,7 @@ package dev.arrbrants.controller
 import dev.arrbrants.controller.llm.LlmClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -129,5 +130,19 @@ class StreamTest {
         assertEquals("device_action", reply.toolCalls[0].name)
         assertEquals("""{"action":"look"}""", reply.toolCalls[0].arguments)
         assertTrue(reply.text.isEmpty())
+    }
+
+    @Test
+    fun sendsReasoningEffort() {
+        LlmClient.stream(
+            LlmClient.Config(
+                "http://127.0.0.1:${server.localPort}", "", "test-model",
+                useTools = false, reasoningEffort = "max"
+            ),
+            listOf(LlmClient.Msg("user", "hi"))
+        ) { }
+
+        assertTrue(requestBody.contains("\"reasoning_effort\":\"max\""))
+        assertFalse(requestBody.contains("\"tools\""))
     }
 }
