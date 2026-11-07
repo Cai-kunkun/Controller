@@ -5,6 +5,7 @@ import dev.arrbrants.controller.agent.ShotThumbs
 import dev.arrbrants.controller.data.ChatMessage
 import android.graphics.Bitmap
 import android.text.TextUtils
+import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -12,11 +13,14 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import io.noties.markwon.Markwon
 
 /** Renders the conversation: user/assistant bubbles, screenshots, attachments. */
 class ChatAdapter(
     private val messages: () -> List<ChatMessage>
 ) : RecyclerView.Adapter<ChatAdapter.BubbleViewHolder>() {
+
+    private var markwon: Markwon? = null
 
     override fun getItemCount(): Int = messages().size
 
@@ -32,7 +36,10 @@ class ChatAdapter(
 
     override fun onBindViewHolder(holder: BubbleViewHolder, position: Int) {
         val msg = messages()[position]
-        holder.text.text = msg.content
+        val renderer = markwon
+            ?: Markwon.create(holder.itemView.context).also { markwon = it }
+        holder.text.movementMethod = LinkMovementMethod.getInstance()
+        renderer.setMarkdown(holder.text, msg.content)
         val bitmap: Bitmap? = msg.imagePath?.let { ShotThumbs.get(holder.itemView.context, it) }
         if (bitmap != null) {
             holder.thumb.visibility = View.VISIBLE
