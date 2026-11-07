@@ -7,12 +7,17 @@ endpoint, and executes the returned actions through `su` (KernelSU / Magisk).
 Core loop: **screenshot → LLM → action → repeat** until the task completes or the user
 stops it.
 
+**Status: 1.0.0-rc1** — first release candidate ([CHANGELOG](CHANGELOG.md)).
+
 ## Features
 
-- **One conversation, two behaviours**: plain text for chat, or a single JSON
-  action to drive the phone — the model chooses per message, no mode switch.
-- **Streaming replies**: chat answers render token by token (`tokens/s` is
-  measured over the decode phase).
+- **One conversation, two behaviours**: plain text for chat, or a `device_action`
+  tool call to drive the phone — the model chooses per message, no mode switch.
+- **DSML + native tool calling**: DeepSeek V4's `<｜DSML｜tool_calls>` envelope is
+  parsed (including the malformed double-bar variant), and a real `tools` schema
+  can be enabled for structured `tool_calls`.
+- **Streaming replies** rendered as Markdown (headings, emphasis, lists, quotes,
+  code, links); `tokens/s` is measured over the decode phase.
 - **Agent loop** with unlimited steps, a stuck-loop guard, per-step screenshots in the chat,
   a floating status banner and a foreground-service notification with a Stop action.
 - **Actions**: `tap`, `double_tap`, `long_press`, `swipe`, `text`, `key`, `wait`,
@@ -34,8 +39,12 @@ stops it.
 - **Cache & speed telemetry**: a strip above the input shows prompt-cache hits and
   misses, the hit rate, output tokens/second, and how full the context window is —
   read straight from the provider's `usage` block.
-- **Chat UI** with conversation history, per-step screenshots, and settings for any
-  OpenAI-compatible endpoint.
+- **Attachments**: pick images or text files. Images are downscaled and sent to the
+  vision model; text is inlined; other binaries are announced by name/type.
+- **Encrypted API key**: stored in Keystore-backed `EncryptedSharedPreferences`,
+  with automatic migration from older plaintext builds.
+- **Chat UI** with conversation history, per-step screenshots, a collapsible stats
+  card, and settings for any OpenAI-compatible endpoint.
 
 ## Project structure
 
@@ -75,6 +84,17 @@ app/src/main/java/dev/arrbrants/controller/
   (e.g. `deepseek-flash`).
 - Android 7.0+ (`minSdk 24`).
 
+## Install
+
+Download the signed APK from the
+[latest release](https://github.com/Cai-kunkun/Controller/releases):
+
+```bash
+adb install -r app-release.apk
+```
+
+Root (KernelSU / Magisk) is required; grant Controller root in the manager.
+
 ## Build
 
 ```bash
@@ -84,6 +104,26 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 `local.properties` needs `sdk.dir=/path/to/Android/sdk`.
+
+### Release build
+
+Create `keystore.properties` in the repo root (gitignored):
+
+```properties
+storeFile=/absolute/path/controller-release.jks
+storePassword=…
+keyAlias=controller
+keyPassword=…
+```
+
+Then:
+
+```bash
+./gradlew assembleRelease
+# APK: app/build/outputs/apk/release/app-release.apk
+```
+
+Without `keystore.properties` the release APK is produced unsigned.
 
 ## Usage
 
@@ -95,9 +135,18 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
      step (screenshot + action + reasoning) in the conversation.
 3. Stop anytime from the notification or the toolbar.
 
-The model never needs a mode switch: to act it replies with a JSON action, and
-to chat it replies in plain text. A `look` action asks for the current screen
-without touching anything, so it can decide with full information.
+The model never needs a mode switch: to act it replies with a DSML tool call (or
+a native `tool_calls` entry when native tool calling is enabled), and to chat it
+replies in plain text. A `look` action asks for the current screen without
+touching anything, so it can decide with full information.
+
+## Known limitations
+
+- Root (KernelSU / Magisk) is required.
+- Binary attachments are announced by name/type; their content is not uploaded.
+- The agent can tap and type anywhere. Watch the run and use Stop.
+- Validated against DeepSeek V4.1 Flash through an OpenAI-compatible endpoint;
+  other providers may differ in tool-call behaviour.
 
 ## Safety
 
