@@ -9,6 +9,10 @@ stops it.
 
 ## Features
 
+- **One conversation, two behaviours**: plain text for chat, or a single JSON
+  action to drive the phone — the model chooses per message, no mode switch.
+- **Streaming replies**: chat answers render token by token (`tokens/s` is
+  measured over the decode phase).
 - **Agent loop** with unlimited steps, a stuck-loop guard, per-step screenshots in the chat,
   a floating status banner and a foreground-service notification with a Stop action.
 - **Actions**: `tap`, `double_tap`, `long_press`, `swipe`, `text`, `key`, `wait`,
@@ -53,11 +57,16 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## Usage
 
 1. Open **Settings** and set your base URL, API key and model.
-2. Tap the robot icon in the toolbar to enable **auto-control** (the input hint changes).
-3. Type a task (e.g. *"打开设置，搜索电池"*), send it. The app moves itself to the
-   background, goes home, and starts working — watch the top banner.
-4. Stop anytime from the notification or the toolbar. Every step (screenshot + action +
-   reasoning) is recorded in the conversation.
+2. Just type a message. The model decides what it is:
+   - a question or chat → the answer streams into the bubble;
+   - something that needs the phone (open an app, tap, type, read the screen) →
+     the app moves itself to the background and starts operating, showing every
+     step (screenshot + action + reasoning) in the conversation.
+3. Stop anytime from the notification or the toolbar.
+
+The model never needs a mode switch: to act it replies with a JSON action, and
+to chat it replies in plain text. A `look` action asks for the current screen
+without touching anything, so it can decide with full information.
 
 ## Safety
 
@@ -66,6 +75,8 @@ Stop button, and review the conversation log to see exactly what was done.
 ## 中文简介
 
 Controller：截屏 → 视觉大模型分析 → 通过 root 执行操作（点击/双击/长按/滑动/输入），
-自动完成手机上的 UI 任务。需要 root（KernelSU/Magisk）和一个支持视觉的 OpenAI 兼容接口
-（如 `deepseek-flash`）。支持中文输入、坐标网格、便签记忆，微信/游戏等隐藏无障碍树的
-App 也能操作。单步还可以用 `sequence` 串起多个动作按顺序执行，压缩长流程的步数。
+自动完成手机上的 UI 任务。聊天和自动操作合并成同一个对话：模型自己判断这条消息是聊天
+（流式文字回答）还是要动手机（返回 JSON 动作）。需要 root（KernelSU/Magisk）和一个支持
+视觉的 OpenAI 兼容接口（如 `deepseek-flash`）。支持中文输入、坐标网格、便签记忆，微信/
+游戏等隐藏无障碍树的 App 也能操作。单步还可以用 `sequence` 串起多个动作按顺序执行，
+压缩长流程的步数。

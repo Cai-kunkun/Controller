@@ -32,10 +32,18 @@ object LlmClient {
         val completionTokens: Long,
         val cacheHitTokens: Long,
         val cacheMissTokens: Long,
-        val elapsedMs: Long
+        val elapsedMs: Long,
+        /** Time to the first streamed token; 0 for non-streaming requests. */
+        val firstTokenMs: Long = 0,
+        /** Time spent receiving tokens after the first one; 0 for non-streaming. */
+        val decodeMs: Long = 0
     ) {
         val tokensPerSecond: Double
-            get() = if (elapsedMs <= 0) 0.0 else completionTokens * 1000.0 / elapsedMs
+            get() = when {
+                decodeMs > 0 -> completionTokens * 1000.0 / decodeMs
+                elapsedMs > 0 -> completionTokens * 1000.0 / elapsedMs
+                else -> 0.0
+            }
     }
 
     data class Reply(val text: String, val usage: Usage)
@@ -52,42 +60,8 @@ object LlmClient {
     }
 
     fun send(cfg: Config, msgs: List<Msg>): Reply {
-        if (cfg.baseUrl.isBlank()) throw IOException("Provider URL is not set")
-        if (cfg.model.isBlank()) throw IOException("Model is not set")
-
         val started = System.currentTimeMillis()
-        val conn = URL(endpoint(cfg.baseUrl)).openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.connectTimeout = 15000
-        conn.readTimeout = 180000
-        conn.doOutput = true
-        conn.setRequestProperty("Content-Type", "application/json")
-        if (cfg.apiKey.isNotBlank()) {
-            conn.setRequestProperty("Authorization", "Bearer ${cfg.apiKey}")
-        }
-
-        val arr = JSONArray()
-        for (m in msgs) {
-            val content: Any = if (m.imageDataUrl == null) {
-                m.text
-            } else {
-                JSONArray()
-                    .put(JSONObject().put("type", "text").put("text", m.text))
-                    .put(
-                        JSONObject()
-                            .put("type", "image_url")
-                            .put("image_url", JSONObject().put("url", m.imageDataUrl))
-                    )
-            }
-            arr.put(JSONObject().put("role", m.role).put("content", content))
-        }
-        val body = JSONObject()
-            .put("model", cfg.model)
-            .put("stream", false)
-            .put("messages", arr)
-
-        conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-
+        val conn = open(cfg, buildBody(cfg, msgs, stream = false))
         val code = conn.responseCode
         val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
             ?.bufferedReader()?.use { it.readText() } ?: ""
@@ -105,6 +79,117 @@ object LlmClient {
             else -> c.toString()
         }
         return Reply(content.ifBlank { "(empty response)" }, parseUsage(root, elapsed))
+    }
+
+    /**
+     * Streaming variant of [send]. [onDelta] runs on the calling (worker)
+     * thread for every content chunk, so the UI can render tokens as they
+     * arrive. Usage is picked up from the final `include_usage` chunk when the
+     * provider supports it; otherwise completion tokens are estimated.
+     */
+    fun stream(cfg: Config, msgs: List<Msg>, onDelta: (String) -> Unit): Reply {
+        val started = System.currentTimeMillis()
+        val conn = open(cfg, buildBody(cfg, msgs, stream = true))
+        val code = conn.responseCode
+        if (code !in 200..299) {
+            val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            throw IOException("HTTP $code ${err.take(300)}")
+        }
+
+        val sb = StringBuilder()
+        var firstTokenAt = 0L
+        var lastTokenAt = 0L
+        var usage: Usage? = null
+        conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+            while (true) {
+                val line = reader.readLine() ?: break
+                val trimmed = line.trim()
+                if (!trimmed.startsWith("data:")) continue
+                val data = trimmed.removePrefix("data:").trim()
+                if (data == "[DONE]") break
+                if (data.isEmpty()) continue
+                val chunk = try {
+                    JSONObject(data)
+                } catch (e: Exception) {
+                    continue
+                }
+                if (chunk.has("usage") && !chunk.isNull("usage")) {
+                    val u = parseUsage(chunk, 0)
+                    if (u.promptTokens > 0 || u.completionTokens > 0) usage = u
+                }
+                val choices = chunk.optJSONArray("choices") ?: continue
+                val delta = choices.optJSONObject(0)?.optJSONObject("delta") ?: continue
+                if (delta.isNull("content")) continue
+                val piece = delta.optString("content", "")
+                if (piece.isEmpty()) continue
+                val now = System.currentTimeMillis()
+                if (firstTokenAt == 0L) firstTokenAt = now
+                lastTokenAt = now
+                sb.append(piece)
+                onDelta(piece)
+            }
+        }
+
+        val finished = System.currentTimeMillis()
+        val text = sb.toString()
+        return Reply(
+            text.ifBlank { "(empty response)" },
+            Usage(
+                promptTokens = usage?.promptTokens ?: 0,
+                completionTokens = usage?.completionTokens
+                    ?: TokenBudget.text(text).toLong(),
+                cacheHitTokens = usage?.cacheHitTokens ?: 0,
+                cacheMissTokens = usage?.cacheMissTokens ?: 0,
+                elapsedMs = finished - started,
+                firstTokenMs = if (firstTokenAt > 0) firstTokenAt - started else 0,
+                decodeMs = if (firstTokenAt > 0) lastTokenAt - firstTokenAt else 0
+            )
+        )
+    }
+
+    /** Builds the request body shared by the streaming and blocking paths. */
+    private fun buildBody(cfg: Config, msgs: List<Msg>, stream: Boolean): JSONObject {
+        val arr = JSONArray()
+        for (m in msgs) {
+            val content: Any = if (m.imageDataUrl == null) {
+                m.text
+            } else {
+                JSONArray()
+                    .put(JSONObject().put("type", "text").put("text", m.text))
+                    .put(
+                        JSONObject()
+                            .put("type", "image_url")
+                            .put("image_url", JSONObject().put("url", m.imageDataUrl))
+                    )
+            }
+            arr.put(JSONObject().put("role", m.role).put("content", content))
+        }
+        val body = JSONObject()
+            .put("model", cfg.model)
+            .put("stream", stream)
+            .put("messages", arr)
+        if (stream) {
+            // Ask OpenAI-compatible providers to report usage in the last chunk.
+            body.put("stream_options", JSONObject().put("include_usage", true))
+        }
+        return body
+    }
+
+    private fun open(cfg: Config, body: JSONObject): HttpURLConnection {
+        if (cfg.baseUrl.isBlank()) throw IOException("Provider URL is not set")
+        if (cfg.model.isBlank()) throw IOException("Model is not set")
+
+        val conn = URL(endpoint(cfg.baseUrl)).openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.connectTimeout = 15000
+        conn.readTimeout = 180000
+        conn.doOutput = true
+        conn.setRequestProperty("Content-Type", "application/json")
+        if (cfg.apiKey.isNotBlank()) {
+            conn.setRequestProperty("Authorization", "Bearer ${cfg.apiKey}")
+        }
+        conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+        return conn
     }
 
     /**

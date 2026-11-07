@@ -3,7 +3,7 @@
     <string name="app_name">Controller</string>
     <string name="settings_title">Settings</string>
     <string name="send">Send</string>
-    <string name="input_hint">Message…</string>
+    <string name="input_hint">Chat, or ask me to use your phone…</string>
     <string name="role_user">You</string>
     <string name="role_assistant">Assistant</string>
     <string name="need_setup">Set up your LLM provider first</string>
@@ -45,7 +45,7 @@
     <string name="screenshot">Screenshot</string>
     <string name="app_subtitle">On-device agent</string>
     <string name="empty_title">No messages yet</string>
-    <string name="empty_hint">Describe a task. Controller will drive this device for you.</string>
+    <string name="empty_hint">Chat with me, or ask me to do something on your phone.</string>
     <string name="delete_chat">Delete chat</string>
     <string name="ctx_label">Context</string>
     <string name="ctx_usage">%1$s / %2$s</string>
@@ -59,4 +59,7 @@
     <string name="context_window_helper">In tokens, e.g. 128000</string>
     <string name="context_window_note">Older steps are compressed automatically when the prompt reaches 90% of this window.</string>
     <string name="agent_compacted">🗜 Context compressed: %1$s → %2$s tokens. Older steps omitted.</string>
+    <string name="agent_auto_start">🖐 Using your phone…</string>
+    <string name="agent_looking">Looking at the screen…</string>
+    <string name="thinking">Thinking…</string>
 </resources>

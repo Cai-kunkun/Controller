@@ -11,8 +11,8 @@ android {
         applicationId = "dev.arrbrants.controller"
         minSdk = 24
         targetSdk = 34
-        versionCode = 22
-        versionName = "0.7.0"
+        versionCode = 23
+        versionName = "0.8.0"
     }
 
     buildTypes {

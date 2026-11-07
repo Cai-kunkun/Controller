@@ -39,15 +39,15 @@ class MainActivity : AppCompatActivity() {
         const val KEY_MODEL = "model"
         const val KEY_CONTEXT_WINDOW = "context_window"
         const val KEY_CURRENT = "current_id"
-        const val KEY_AGENT = "agent_mode"
         const val DEFAULT_CONTEXT_WINDOW = 128_000
         const val TITLE_MAX = 24
+        /** Text-only context budget for the routing request, in tokens. */
+        private const val CHAT_CONTEXT_TOKENS = 12_000L
     }
 
     private var history: MutableList<ChatMessage> = ArrayList()
     private var conversations: MutableList<ConversationStore.Conversation> = ArrayList()
     private var currentId = -1L
-    private var agentMode = false
 
     private lateinit var prefs: SharedPreferences
     private lateinit var adapter: ChatAdapter
@@ -81,7 +81,6 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        agentMode = prefs.getBoolean(KEY_AGENT, false)
         conversations = ConversationStore.loadAll(prefs)
         currentId = prefs.getLong(KEY_CURRENT, -1L)
         val current = conversations.find { it.id == currentId }
@@ -126,7 +125,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         findViewById<View>(R.id.btnSend).setOnClickListener { send() }
-        updateInputHint()
         refreshUi()
         refreshDrawer()
     }
@@ -137,7 +135,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        menu.findItem(R.id.action_agent)?.isChecked = agentMode
         menu.findItem(R.id.action_stop)?.isVisible = AgentService.running
         return super.onPrepareOptionsMenu(menu)
     }
@@ -146,13 +143,6 @@ class MainActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.action_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
-                true
-            }
-            R.id.action_agent -> {
-                agentMode = !agentMode
-                prefs.edit().putBoolean(KEY_AGENT, agentMode).apply()
-                updateInputHint()
-                invalidateOptionsMenu()
                 true
             }
             R.id.action_stop -> {
@@ -221,6 +211,11 @@ class MainActivity : AppCompatActivity() {
         refreshDrawer()
     }
 
+    /**
+     * One unified path: the message is answered by the model, which may either
+     * reply in plain text (chat) or emit a JSON action (operate the phone).
+     * Chat replies stream into the bubble token by token.
+     */
     private fun send() {
         if (AgentService.running) {
             Toast.makeText(this, R.string.agent_already_running, Toast.LENGTH_SHORT).show()
@@ -244,36 +239,113 @@ class MainActivity : AppCompatActivity() {
         input.setText("")
         history.add(ChatMessage("user", text))
         syncCurrent()
-        refreshUi()
-        refreshDrawer()
-
-        if (agentMode) {
-            ensureNotificationPermission()
-            AgentService.start(this, text, currentId)
-            invalidateOptionsMenu()
-            moveTaskToBack(true)
-            return
-        }
-
-        busy = true
         val conversationId = currentId
+        val requestMessages = buildChatMessages()
+
+        history.add(ChatMessage("assistant", ""))
+        val index = history.size - 1
+        adapter.notifyItemInserted(index)
+        list.scrollToPosition(index)
+        busy = true
+
         Thread {
+            val builder = StringBuilder()
+            var decided = false
+            var plainText = false
+            var lastPost = 0L
+            var error: Exception? = null
+
             val reply = try {
-                LlmClient.send(cfg, history.map { LlmClient.Msg(it.role, it.content) })
+                LlmClient.stream(cfg, requestMessages) { delta ->
+                    builder.append(delta)
+                    if (!decided) {
+                        val start = builder.toString().trimStart()
+                        if (start.isNotEmpty()) {
+                            decided = true
+                            plainText = !start.startsWith("{") && !start.startsWith("```")
+                        }
+                    }
+                    val now = System.currentTimeMillis()
+                    if (decided && plainText && now - lastPost >= 60) {
+                        lastPost = now
+                        val snapshot = builder.toString()
+                        runOnUiThread { updateBubble(index, snapshot) }
+                    }
+                }
             } catch (e: Exception) {
-                LlmClient.Reply("Error: ${e.message}", LlmClient.Usage(0, 0, 0, 0, 0))
+                error = e
+                null
             }
-            if (conversationId >= 0 && reply.usage.promptTokens > 0) {
-                StatsStore.record(prefs, conversationId, reply.usage)
-            }
+
             runOnUiThread {
-                history.add(ChatMessage("assistant", reply.text))
                 busy = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (reply == null) {
+                    updateBubble(index, "Error: ${error?.message}")
+                } else {
+                    routeReply(index, conversationId, reply)
+                }
                 syncCurrent()
                 refreshUi()
                 refreshDrawer()
             }
         }.start()
+    }
+
+    /**
+     * Decides what a completed reply means: a chat answer stays in the bubble,
+     * a JSON action hands the conversation over to the automation service.
+     */
+    private fun routeReply(index: Int, conversationId: Long, reply: LlmClient.Reply) {
+        if (conversationId >= 0 && reply.usage.promptTokens > 0) {
+            StatsStore.record(prefs, conversationId, reply.usage)
+        }
+        val step = AgentProtocol.asActionOrNull(reply.text)
+        when {
+            step == null -> updateBubble(index, reply.text)
+
+            step.action is AgentProtocol.Action.Done ->
+                updateBubble(index, getString(R.string.agent_done, step.action.summary))
+
+            step.action is AgentProtocol.Action.Ask ->
+                updateBubble(index, getString(R.string.agent_ask, step.action.question))
+
+            else -> {
+                // The model wants to operate the phone: show a note, then let
+                // the service take over with screenshots and real actions.
+                updateBubble(index, getString(R.string.agent_auto_start))
+                ensureNotificationPermission()
+                AgentService.start(this, conversationId)
+                invalidateOptionsMenu()
+                moveTaskToBack(true)
+            }
+        }
+    }
+
+    /** Updates one bubble in place while a reply streams in. */
+    private fun updateBubble(index: Int, text: String) {
+        if (isFinishing || isDestroyed) return
+        if (index !in history.indices) return
+        history[index] = history[index].copy(content = text)
+        adapter.notifyItemChanged(index)
+        list.scrollToPosition(index)
+    }
+
+    /** Text-only context for the routing/chat request, newest messages first. */
+    private fun buildChatMessages(): List<LlmClient.Msg> {
+        val selected = ArrayList<LlmClient.Msg>()
+        var tokens = 0L
+        for (m in history.asReversed()) {
+            if (m.content.isBlank()) continue
+            val msg = LlmClient.Msg(m.role, m.content)
+            if (tokens + msg.approxTokens > CHAT_CONTEXT_TOKENS) break
+            selected.add(0, msg)
+            tokens += msg.approxTokens
+        }
+        return ArrayList<LlmClient.Msg>(selected.size + 1).apply {
+            add(LlmClient.Msg("system", AgentProtocol.systemPrompt()))
+            addAll(selected)
+        }
     }
 
     private fun ensureNotificationPermission() {
@@ -282,10 +354,6 @@ class MainActivity : AppCompatActivity() {
         ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
-    }
-
-    private fun updateInputHint() {
-        input.setHint(if (agentMode) R.string.agent_hint else R.string.input_hint)
     }
 
     /** Registers a fresh conversation on the first message and persists state. */

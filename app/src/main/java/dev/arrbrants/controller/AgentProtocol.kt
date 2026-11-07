@@ -25,6 +25,8 @@ object AgentProtocol {
         data class Text(val text: String) : Action()
         data class Key(val key: String) : Action()
         data class Wait(val ms: Int) : Action()
+        /** Fetches the current screen without touching it, so the model can decide. */
+        object Look : Action()
         /** Several actions run in order inside one step. */
         data class Sequence(val steps: List<Action>) : Action()
         data class Done(val summary: String) : Action()
@@ -33,12 +35,21 @@ object AgentProtocol {
 
     data class Step(val thought: String, val action: Action, val notes: String? = null)
 
-    fun systemPrompt(task: String): String = """
-        You are an Android device automation agent. Each turn you receive a screenshot of the phone screen and must reply with exactly ONE action, as a single JSON object. No markdown fences, no extra text.
+    fun systemPrompt(): String = """
+        You are Controller, the user's on-device assistant. You can both chat and operate the user's Android phone.
+
+        Decide what each message needs:
+        - Pure conversation (answer a question, explain, write, translate, summarize, plan, code, small talk): reply in plain text. Do NOT emit JSON.
+        - A phone task (open or use an app, tap, type, scroll, read the screen, change a setting, follow a flow in another app): operate the phone by replying with exactly ONE JSON action and no other text.
+        - If the task depends on what is currently on screen and you have not seen it, start with {"thought":"...","action":"look"}.
+        - Never just say that you will do something: to actually operate the phone you must reply with a JSON action.
+
+        While operating you receive a screenshot after every action and keep replying with one JSON action. When the task is finished reply {"action":"done","summary":"..."}. If the user only needed an answer that you can now give, reply in plain text instead — that ends the operation.
 
         Coordinates use a 0-1000 scale relative to the screenshot: x=0 is the left edge, x=1000 the right edge, y=0 the top edge, y=1000 the bottom edge.
 
         Actions:
+        {"thought":"why you do this","action":"look"}        // capture the screen without touching it
         {"thought":"why you do this","action":"tap","x":500,"y":250}
         {"thought":"...","action":"long_press","x":500,"y":250}   // press and hold; e.g. long-press the WeChat Moments camera icon to post text-only
         {"thought":"...","action":"double_tap","x":500,"y":400}   // two quick taps; e.g. on Douyin, double-tapping the video likes it
@@ -57,7 +68,7 @@ object AgentProtocol {
         Every reply may also include a "notes" field: a scratchpad that is carried across steps and shown back to you on the next step. Use it to remember anything you still need — especially content you read (e.g. email texts you are collecting for a summary) and which items you have already processed. When present it replaces the previous notes. Example:
         {"thought":"...","action":"tap_text","text":"Next email","notes":"Read 1/3: Google security alert - new sign-in on Pixel, 2 days ago. Remaining: Tavily, Rotem Weiss."}
 
-        Rules:
+        Rules while operating the phone:
         - Every screenshot has a faint magenta grid: the lines are labeled 100..900 on the 0-1000 coordinate scale — read coordinates off this grid so taps land precisely.
         - Your full step history (all previous screenshots and your own replies) is attached to the conversation; rely on it instead of revisiting screens you have already seen.
         - Keep your notes up to date: when you read or learn something you will need later (like an email to summarize), write it into "notes" immediately — you cannot go back to earlier screenshots and nothing else is remembered.
@@ -83,8 +94,6 @@ object AgentProtocol {
         - If an action did not work, do not repeat it blindly; try a different approach.
         - A search showing no results does not mean your text was not entered; try a different wording (e.g. the device's local language variant) before retyping.
         - Reply "done" as soon as the task is complete.
-
-        The user's task: $task
     """.trimIndent()
 
     fun stepPrompt(step: Int, lastResult: String?, notes: String?, advice: String?): String {
@@ -98,8 +107,26 @@ object AgentProtocol {
         if (!advice.isNullOrBlank()) {
             sb.append("\nAdvice: ").append(advice)
         }
-        sb.append("\nHere is the current screenshot. Reply with exactly one JSON action.")
+        sb.append("\nHere is the current screenshot. Reply with one JSON action to keep operating, ")
+        sb.append("or with plain text to answer the user and stop.")
         return sb.toString()
+    }
+
+    /**
+     * Returns the parsed action when the whole reply is a single JSON object
+     * (optionally wrapped in a markdown fence), or null for a normal chat reply.
+     */
+    fun asActionOrNull(reply: String): Step? {
+        var t = reply.trim()
+        if (t.startsWith("```")) {
+            t = t.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+        }
+        if (!t.startsWith("{")) return null
+        return try {
+            parse(t)
+        } catch (e: IOException) {
+            null
+        }
     }
 
     fun parse(reply: String): Step {
@@ -131,6 +158,7 @@ object AgentProtocol {
             "text" -> Action.Text(requireText(obj, "text"))
             "key" -> Action.Key(requireText(obj, "key"))
             "wait" -> Action.Wait(obj.optInt("ms", 1000).coerceIn(0, 5000))
+            "look" -> Action.Look
             "sequence" -> Action.Sequence(parseSequence(obj.optJSONArray("steps"), depth))
             "done" -> Action.Done(obj.optString("summary").ifBlank { "task finished" })
             "ask" -> Action.Ask(obj.optString("question").ifBlank { "need more information" })
@@ -190,6 +218,7 @@ object AgentProtocol {
         is Action.Text -> "type \"${action.text}\""
         is Action.Key -> "key ${action.key}"
         is Action.Wait -> "wait ${action.ms}ms"
+        is Action.Look -> "look at the screen"
         is Action.Sequence ->
             "sequence of ${action.steps.size} [" +
                 action.steps.joinToString(", ") { describe(it) } + "]"
@@ -215,6 +244,7 @@ object AgentProtocol {
         is Action.Text -> "text:${action.text.take(20)}"
         is Action.Key -> "key:${action.key}"
         is Action.Wait -> "wait"
+        is Action.Look -> "look"
         // A repeated whole chain counts as one repeated step: the sequence
         // fingerprint covers its elements, so a stuck chain still trips the guard.
         is Action.Sequence -> "seq:" + action.steps.joinToString(",") { actionSignature(it) }

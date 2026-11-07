@@ -31,7 +31,6 @@ class AgentService : Service() {
     companion object {
         private const val CHANNEL_ID = "agent"
         private const val NOTIF_ID = 42
-        private const val EXTRA_TASK = "task"
         private const val EXTRA_CONVERSATION = "conversation"
         private const val STEP_DELAY_MS = 1200L
         /** Pause between the actions of one sequence, so the UI can react. */
@@ -57,10 +56,9 @@ class AgentService : Service() {
 
         @Volatile private var stopRequested = false
 
-        fun start(context: Context, task: String, conversationId: Long) {
+        fun start(context: Context, conversationId: Long) {
             val intent = Intent(context, AgentService::class.java)
                 .setAction(ACTION_START)
-                .putExtra(EXTRA_TASK, task)
                 .putExtra(EXTRA_CONVERSATION, conversationId)
             ContextCompat.startForegroundService(context, intent)
         }
@@ -99,22 +97,21 @@ class AgentService : Service() {
                 if (running) updateNotification(getString(R.string.agent_stopping)) else stopSelf()
             }
             else -> {
-                val task = intent?.getStringExtra(EXTRA_TASK)
                 val conversationId = intent?.getLongExtra(EXTRA_CONVERSATION, -1L) ?: -1L
-                if (task.isNullOrBlank() || conversationId < 0 || running) {
+                if (conversationId < 0 || running) {
                     stopSelf()
                 } else {
                     stopRequested = false
                     createChannel()
                     startForeground(NOTIF_ID, buildNotification(getString(R.string.agent_starting)))
-                    Thread { runAgent(task, conversationId) }.start()
+                    Thread { runAgent(conversationId) }.start()
                 }
             }
         }
         return START_NOT_STICKY
     }
 
-    private fun runAgent(task: String, conversationId: Long) {
+    private fun runAgent(conversationId: Long) {
         running = true
         lastPromptTokens = 0L
         val app = applicationContext
@@ -153,8 +150,20 @@ class AgentService : Service() {
             }
 
             val msgs = ArrayList<LlmClient.Msg>()
-            val systemMsg = LlmClient.Msg("system", AgentProtocol.systemPrompt(task))
+            val systemMsg = LlmClient.Msg("system", AgentProtocol.systemPrompt())
             msgs.add(systemMsg)
+            // Seed the loop with the conversation's text so the model keeps the
+            // user's request and any earlier chat context.
+            val seed = ConversationStore.loadAll(prefs).find { it.id == conversationId }
+            var seededTokens = 0L
+            for (m in (seed?.messages ?: emptyList<ChatMessage>()).takeLast(30)) {
+                if (m.role != "user" && m.role != "assistant") continue
+                if (m.content.isBlank()) continue
+                val msg = LlmClient.Msg(m.role, m.content)
+                if (seededTokens + msg.approxTokens > 6000) break
+                msgs.add(msg)
+                seededTokens += msg.approxTokens
+            }
             val stepLog = ArrayList<String>()
             val contextLimit = prefs.getInt(
                 MainActivity.KEY_CONTEXT_WINDOW,
@@ -213,6 +222,12 @@ class AgentService : Service() {
                 msgs.add(userMsg)
                 val parsed = try {
                     requestAction(cfg, msgs, conversationId)
+                } catch (e: FinalAnswer) {
+                    // The model chose to answer in plain text instead of acting.
+                    appendMessage(conversationId, ChatMessage("assistant", e.text))
+                    overlay?.update(getString(R.string.agent_finished), e.text.take(120), null)
+                    finished = true
+                    break
                 } catch (e: Exception) {
                     appendMessage(
                         conversationId,
@@ -223,6 +238,20 @@ class AgentService : Service() {
                 val screenStep = AgentProtocol.toScreenSpace(parsed, shot)
                 if (parsed.notes != null) notes = parsed.notes
                 val action = screenStep.action
+
+                if (action is AgentProtocol.Action.Look) {
+                    // No device interaction: just refresh the screen and decide.
+                    updateNotification(getString(R.string.agent_running, step))
+                    overlay?.update(
+                        getString(R.string.agent_running, step),
+                        getString(R.string.agent_looking),
+                        screenStep.thought
+                    )
+                    stepLog.add("$step. look at the screen")
+                    if (stepLog.size > STEP_LOG_MAX) stepLog.removeAt(0)
+                    if (!stopRequested) Thread.sleep(400)
+                    continue
+                }
 
                 if (action is AgentProtocol.Action.Done) {
                     val path = ScreenCapture.saveShot(app, conversationId, shot.jpeg)
@@ -385,6 +414,9 @@ class AgentService : Service() {
         return sb.toString()
     }
 
+    /** Thrown when the model answers in plain text instead of emitting an action. */
+    private class FinalAnswer(val text: String) : Exception()
+
     /** Asks the model for one action, giving it up to two chances to fix bad JSON. */
     private fun requestAction(
         cfg: LlmClient.Config,
@@ -397,17 +429,20 @@ class AgentService : Service() {
             lastPromptTokens = reply.usage.promptTokens
             StatsStore.record(prefs, conversationId, reply.usage)
             msgs.add(LlmClient.Msg("assistant", reply.text))
-            try {
-                return AgentProtocol.parse(reply.text)
-            } catch (e: IOException) {
-                lastError = e.message
-                msgs.add(
-                    LlmClient.Msg(
-                        "user",
-                        "Your reply could not be used: ${e.message}. Reply with exactly one valid JSON object and nothing else."
-                    )
-                )
+            AgentProtocol.asActionOrNull(reply.text)?.let { return it }
+            val trimmed = reply.text.trim()
+            if (!trimmed.startsWith("{") && !trimmed.startsWith("```")) {
+                // The model decided to answer the user instead of continuing.
+                throw FinalAnswer(reply.text)
             }
+            lastError = "invalid JSON action"
+            msgs.add(
+                LlmClient.Msg(
+                    "user",
+                    "Your reply could not be used: it must be exactly one valid JSON action. " +
+                        "Reply with one JSON action, or with plain text to answer the user and stop."
+                )
+            )
         }
         throw IOException("model kept replying with invalid actions: $lastError")
     }
@@ -433,6 +468,7 @@ class AgentService : Service() {
                 Thread.sleep(action.ms.toLong())
                 null
             }
+            is AgentProtocol.Action.Look -> null
             is AgentProtocol.Action.Sequence -> runSequence(action, executeLabel)
             else -> null
         }

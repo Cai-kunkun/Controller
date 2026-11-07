@@ -3,7 +3,7 @@
     <string name="app_name">Controller</string>
     <string name="settings_title">设置</string>
     <string name="send">发送</string>
-    <string name="input_hint">输入消息…</string>
+    <string name="input_hint">聊天，或让我操作手机…</string>
     <string name="role_user">你</string>
     <string name="role_assistant">助手</string>
     <string name="need_setup">请先设置你的 LLM 服务商</string>
@@ -44,7 +44,7 @@
     <string name="screenshot">截图</string>
     <string name="app_subtitle">端侧自动代理</string>
     <string name="empty_title">还没有消息</string>
-    <string name="empty_hint">描述一个任务，Controller 会在你的设备上自动完成。</string>
+    <string name="empty_hint">和我聊天，或者让我帮你在手机上做点什么。</string>
     <string name="delete_chat">删除对话</string>
     <string name="ctx_label">上下文</string>
     <string name="ctx_usage">%1$s / %2$s</string>
@@ -58,4 +58,7 @@
     <string name="context_window_helper">以 token 计，例如 128000</string>
     <string name="context_window_note">当提示词达到该窗口的 90% 时，会自动压缩较早的步骤。</string>
     <string name="agent_compacted">🗜 已压缩上下文：%1$s → %2$s token，较早的步骤已省略。</string>
+    <string name="agent_auto_start">🖐 开始操作手机…</string>
+    <string name="agent_looking">正在查看屏幕…</string>
+    <string name="thinking">正在思考…</string>
 </resources>
