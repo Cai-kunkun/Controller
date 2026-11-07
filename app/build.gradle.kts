@@ -21,8 +21,8 @@ android {
         applicationId = "dev.arrbrants.controller"
         minSdk = 24
         targetSdk = 34
-        versionCode = 29
-        versionName = "1.0.0-rc6"
+        versionCode = 30
+        versionName = "1.0.0-rc7"
     }
 
     signingConfigs {

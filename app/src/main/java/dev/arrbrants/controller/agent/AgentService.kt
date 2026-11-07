@@ -535,6 +535,42 @@ class AgentService : Service() {
                 throw PluginHandled(summary)
             }
 
+            // Some providers leak the DSML envelope into content instead of
+            // structured tool_calls; execute plugin invokes from text too.
+            val dsmlPlugin = AgentProtocol.asPluginCallOrNull(reply.text)
+            if (dsmlPlugin != null) {
+                msgs.add(LlmClient.Msg("assistant", reply.text))
+                val plugin = PluginStore.enabled(this)
+                    .find { it.toolName == dsmlPlugin.name }
+                val result = if (plugin == null) {
+                    "error: plugin not found or disabled"
+                } else {
+                    val args = try {
+                        JSONObject(dsmlPlugin.arguments)
+                    } catch (e: Exception) {
+                        JSONObject()
+                    }
+                    try {
+                        pluginExecutor.run(plugin, args)
+                    } catch (e: Exception) {
+                        "error: ${e.message ?: "plugin failed"}"
+                    }
+                }
+                msgs.add(
+                    LlmClient.Msg(
+                        "user",
+                        "[plugin ${dsmlPlugin.name} result]\n$result"
+                    )
+                )
+                lastReplyText = reply.text
+                val summary = if (plugin == null) {
+                    "🔌 ${dsmlPlugin.name}: not enabled"
+                } else {
+                    "🔌 ${plugin.name}: ${result.take(300)}"
+                }
+                throw PluginHandled(summary)
+            }
+
             // Native function calling: structured tool_calls in the reply.
             val toolStep = AgentProtocol.stepFromToolCalls(reply.toolCalls)
             if (toolStep != null) {

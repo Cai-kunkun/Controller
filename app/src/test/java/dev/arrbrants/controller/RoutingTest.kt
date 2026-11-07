@@ -100,6 +100,28 @@ class RoutingTest {
     }
 
     @Test
+    fun dsmlPluginCallWithEmptyBody() {
+        val raw = "<｜DSML｜tool_calls><｜DSML｜invoke name=\"plugin_device_report\">\n" +
+            "</｜DSML｜invoke></｜DSML｜tool_calls>"
+        val call = AgentProtocol.asPluginCallOrNull(raw)
+        assertEquals("plugin_device_report", call?.name)
+        assertEquals("{}", call?.arguments)
+    }
+
+    @Test
+    fun dsmlPluginCallWithParameters() {
+        val raw = "<｜DSML｜invoke name=\"plugin_webhook\">" +
+            "<｜DSML｜parameter name=\"url\" string=\"true\">https://example.com" +
+            "</｜DSML｜parameter></｜DSML｜invoke>"
+        val call = AgentProtocol.asPluginCallOrNull(raw)
+        assertEquals("plugin_webhook", call?.name)
+        assertEquals(
+            "https://example.com",
+            org.json.JSONObject(call!!.arguments).optString("url")
+        )
+    }
+
+    @Test
     fun nativeToolCallRoundTripsThroughDsml() {
         val calls = listOf(
             LlmClient.ToolCall(

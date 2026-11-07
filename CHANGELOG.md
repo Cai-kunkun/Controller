@@ -2,6 +2,12 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc7] - 2026-11-07
+
+- Fix plugin calls that arrive as **DSML text** instead of structured
+  `tool_calls` (including empty `invoke name="plugin_..."` bodies): detect them
+  in chat routing and execute them in the agent loop.
+
 ## [1.0.0-rc6] - 2026-11-07
 
 - **Declarative plugins**: import JSON plugins in Settings, enable/disable/delete,

@@ -217,6 +217,28 @@ object AgentProtocol {
     fun containsToolMarkup(text: String): Boolean =
         text.contains("DSML", ignoreCase = true)
 
+    /**
+     * Extracts a plugin call from DSML text, e.g.
+     * `<｜DSML｜invoke name="plugin_device_report"></｜DSML｜invoke>`.
+     */
+    fun asPluginCallOrNull(reply: String): LlmClient.ToolCall? {
+        if (!containsToolMarkup(reply)) return null
+        val normalized = reply.replace('\uFF5C', '|')
+        for (match in DSML_INVOKE_BLOCK.findAll(normalized)) {
+            val name = match.groupValues[1].trim()
+            if (!name.startsWith("plugin_")) continue
+            val args = JSONObject()
+            for (param in DSML_PARAM.findAll(match.groupValues[2])) {
+                val key = param.groupValues[1].trim()
+                val value = param.groupValues[2].trim()
+                if (value.contains("<|DSML|", ignoreCase = true)) continue
+                args.put(key, value)
+            }
+            return LlmClient.ToolCall("dsml_$name", name, args.toString())
+        }
+        return null
+    }
+
     private val DSML_OPEN = "<\\|{1,2}\\s*DSML\\s*\\|{1,2}"
 
     private val DSML_PARAM = Regex(
@@ -229,6 +251,13 @@ object AgentProtocol {
     private val DSML_INVOKE = Regex(
         "$DSML_OPEN\\s*invoke\\b[^>]*?\\bname=\"([^\"]+)\"[^>]*>" +
             "([\\s\\S]*?)</\\|{1,2}\\s*DSML\\s*\\|{1,2}\\s*(?:parameter|invoke)>",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** Whole invoke blocks, used to find plugin calls (empty bodies included). */
+    private val DSML_INVOKE_BLOCK = Regex(
+        "$DSML_OPEN\\s*invoke\\b[^>]*?\\bname=\"([^\"]+)\"[^>]*>" +
+            "([\\s\\S]*?)</\\|{1,2}\\s*DSML\\s*\\|{1,2}\\s*invoke>",
         RegexOption.IGNORE_CASE
     )
 

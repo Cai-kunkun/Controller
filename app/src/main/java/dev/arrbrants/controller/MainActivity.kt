@@ -345,7 +345,8 @@ class MainActivity : AppCompatActivity() {
         }
         val step = AgentProtocol.stepFromToolCalls(reply.toolCalls)
             ?: AgentProtocol.asActionOrNull(reply.text)
-        val pluginCall = reply.toolCalls.any { it.name.startsWith("plugin_") }
+        val pluginCall = reply.toolCalls.any { it.name.startsWith("plugin_") } ||
+            AgentProtocol.asPluginCallOrNull(reply.text) != null
         when {
             pluginCall -> startAgent(index, conversationId)
 

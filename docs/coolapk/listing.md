@@ -9,7 +9,7 @@
 | 分类 | 效率 / 工具 |
 | 标签 | AI、自动化、Root、效率、DeepSeek、Agent、Markdown |
 | 包名 | `dev.arrbrants.controller` |
-| 版本 | `1.0.0-rc6`（versionCode 29） |
+| 版本 | `1.0.0-rc7`（versionCode 30） |
 | 大小 | 约 5.5 MB |
 | 最低系统 | Android 7.0 |
 | 开源地址 | https://github.com/Cai-kunkun/Controller |
@@ -68,11 +68,10 @@ Controller 把「聊天」和「操作手机」合成了一个对话。
 Root 自动化可以点击和输入屏幕上的任何位置。请在使用时盯着运行过程，确认目标应用和内容无误，
 并随时使用停止按钮。不要用它绕过应用的限制或进行违规操作。
 
-## 更新日志（1.0.0-rc6）
+## 更新日志（1.0.0-rc7）
 
-- 新增声明式插件：JSON 导入、启用/禁用/删除，作为 `plugin_<id>` 工具
-- 插件步骤白名单：shell / HTTP / UI action；默认关闭，危险步骤二次确认
-- 其他同 1.0.0-rc5
+- 修复模型以 DSML 文本调用插件（包括无参数 invoke）时不执行的问题
+- 其他同 1.0.0-rc6
 
 ## 截图
 
