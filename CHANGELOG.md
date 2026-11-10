@@ -2,6 +2,11 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc10] - 2026-11-10
+
+- Release builds use **R8 full mode**: minification, obfuscation, optimization
+  and resource shrinking (`proguard-android-optimize.txt`, APK ~3.7 MB).
+
 ## [1.0.0-rc9] - 2026-11-10
 
 - **Update check**: Settings → About → Check for updates (GitHub releases,

@@ -21,8 +21,8 @@ android {
         applicationId = "dev.arrbrants.controller"
         minSdk = 24
         targetSdk = 34
-        versionCode = 32
-        versionName = "1.0.0-rc9"
+        versionCode = 33
+        versionName = "1.0.0-rc10"
     }
 
     signingConfigs {
@@ -38,7 +38,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
