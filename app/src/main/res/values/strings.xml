@@ -105,4 +105,17 @@
     <string name="update_available_title">New version %1$s</string>
     <string name="update_open">Open release page</string>
     <string name="update_later">Later</string>
+    <string name="settings_provider">Provider</string>
+    <string name="settings_generation">Generation</string>
+    <string name="settings_context">Context</string>
+    <string name="settings_persona">Persona &amp; instructions</string>
+    <string name="settings_plugins">Plugins</string>
+    <string name="settings_about">About</string>
+    <string name="settings_summary_unset">Not set</string>
+    <string name="settings_summary_native_on">Native tools: on</string>
+    <string name="settings_summary_native_off">Native tools: off</string>
+    <string name="settings_summary_context">%1$s tokens</string>
+    <string name="settings_summary_custom">Customized</string>
+    <string name="settings_summary_default">Default</string>
+    <string name="settings_summary_plugins">%1$d enabled</string>
 </resources>

@@ -29,6 +29,31 @@
             android:label="@string/settings_title" />
 
         <activity
+            android:name=".ProviderSettingsActivity"
+            android:exported="false"
+            android:label="@string/settings_provider" />
+
+        <activity
+            android:name=".GenerationSettingsActivity"
+            android:exported="false"
+            android:label="@string/settings_generation" />
+
+        <activity
+            android:name=".ContextSettingsActivity"
+            android:exported="false"
+            android:label="@string/settings_context" />
+
+        <activity
+            android:name=".PersonaSettingsActivity"
+            android:exported="false"
+            android:label="@string/settings_persona" />
+
+        <activity
+            android:name=".AboutSettingsActivity"
+            android:exported="false"
+            android:label="@string/settings_about" />
+
+        <activity
             android:name=".PluginsActivity"
             android:exported="false"
             android:label="@string/plugins_title" />

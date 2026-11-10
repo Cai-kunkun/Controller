@@ -2,6 +2,16 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc12] - 2026-11-10
+
+- Settings split into a category list plus separate, auto-saving activities
+  (Provider / Generation / Context / Persona / Plugins / About); the Save
+  button is gone.
+- Persona editor is a full-screen scrolling field with natural fling.
+- Send button uses a 16dp rounded square matching the input dock.
+- The chat toolbar shows the selected thinking effort, and every request sends
+  the saved `reasoning_effort`.
+
 ## [1.0.0-rc11] - 2026-11-10
 
 - Streaming thoughts are shown expanded while they arrive and collapse as soon

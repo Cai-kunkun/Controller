@@ -50,6 +50,15 @@ object AppPrefs {
     fun reasoning(context: Context): String =
         get(context).getString(KEY_REASONING, "").orEmpty()
 
+    /** Short display label for the configured reasoning effort. */
+    fun reasoningLabel(context: Context): String = when (reasoning(context)) {
+        "none" -> "Off"
+        "low" -> "Low"
+        "high" -> "High"
+        "max" -> "Max"
+        else -> "Default"
+    }
+
     /** Extra persona/instructions appended after the built-in tool prompt. */
     fun persona(context: Context): String =
         get(context).getString(KEY_PERSONA, "").orEmpty()

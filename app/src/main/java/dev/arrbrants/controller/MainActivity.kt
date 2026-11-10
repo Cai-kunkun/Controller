@@ -564,7 +564,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateToolbarSubtitle() {
         val model = prefs.getString(AppPrefs.KEY_MODEL, "")?.trim().orEmpty()
-        toolbar.subtitle = if (model.isEmpty()) getString(R.string.app_subtitle) else model
+        val base = model.ifBlank { getString(R.string.app_subtitle) }
+        val effort = AppPrefs.reasoning(this)
+        val label = if (effort.isBlank()) "" else AppPrefs.reasoningLabel(this)
+        toolbar.subtitle = if (label.isBlank()) base else "$base · $label"
     }
 
     private fun refreshStats() {

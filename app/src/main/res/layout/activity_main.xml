@@ -173,6 +173,7 @@
                             app:elevation="0dp"
                             app:fabCustomSize="48dp"
                             app:maxImageSize="22dp"
+                            app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.SendButton"
                             app:srcCompat="@drawable/ic_send"
                             app:tint="?attr/colorOnPrimary" />
 

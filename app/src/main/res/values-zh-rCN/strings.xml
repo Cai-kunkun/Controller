@@ -104,4 +104,17 @@
     <string name="update_available_title">发现新版本 %1$s</string>
     <string name="update_open">打开发布页</string>
     <string name="update_later">稍后</string>
+    <string name="settings_provider">服务商</string>
+    <string name="settings_generation">生成</string>
+    <string name="settings_context">上下文</string>
+    <string name="settings_persona">人格与指令</string>
+    <string name="settings_plugins">插件</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_summary_unset">未设置</string>
+    <string name="settings_summary_native_on">原生工具：开</string>
+    <string name="settings_summary_native_off">原生工具：关</string>
+    <string name="settings_summary_context">%1$s tokens</string>
+    <string name="settings_summary_custom">已自定义</string>
+    <string name="settings_summary_default">默认</string>
+    <string name="settings_summary_plugins">%1$d 个已启用</string>
 </resources>
