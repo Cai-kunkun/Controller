@@ -80,6 +80,7 @@ class MainActivity : AppCompatActivity() {
     private var statsCollapsed = false
     private val pending = ArrayList<Attachment>()
     private var busy = false
+    private var autoScroll = true
 
     private val filePicker =
         registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -127,8 +128,16 @@ class MainActivity : AppCompatActivity() {
         pendingRow = findViewById(R.id.pendingRow)
         pendingScroll = findViewById(R.id.pendingScroll)
         adapter = ChatAdapter { history }
-        list.layoutManager = LinearLayoutManager(this)
+        list.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         list.adapter = adapter
+        list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+                    // Follow new tokens only while the user is at the bottom.
+                    autoScroll = !recyclerView.canScrollVertically(1)
+                }
+            }
+        })
         drawerAdapter = ConversationAdapter(
             { conversations },
             { currentId },
@@ -284,6 +293,8 @@ class MainActivity : AppCompatActivity() {
         history.add(ChatMessage("assistant", getString(R.string.thinking)))
         val index = history.size - 1
         adapter.notifyItemInserted(index)
+        emptyState.visibility = View.GONE
+        autoScroll = true
         list.scrollToPosition(index)
         busy = true
 
@@ -292,13 +303,37 @@ class MainActivity : AppCompatActivity() {
                 this, snapshot, AgentProtocol.systemPrompt(AppPrefs.persona(this))
             )
             val builder = StringBuilder()
+            val reasoningBuilder = StringBuilder()
+            var contentStarted = false
+            var lastReasoningPost = 0L
             var decided = false
             var plainText = false
             var lastPost = 0L
             var error: Exception? = null
 
             val reply = try {
-                LlmClient.stream(cfg, requestMessages) { delta ->
+                LlmClient.stream(
+                    cfg,
+                    requestMessages,
+                    onReasoning = { piece ->
+                        reasoningBuilder.append(piece)
+                        if (!contentStarted) {
+                            val now = System.currentTimeMillis()
+                            if (now - lastReasoningPost >= 60) {
+                                lastReasoningPost = now
+                                val snapshotReasoning = reasoningBuilder.toString()
+                                runOnUiThread {
+                                    updateBubble(
+                                        index,
+                                        "",
+                                        reasoning = snapshotReasoning,
+                                        reasoningExpanded = true
+                                    )
+                                }
+                            }
+                        }
+                    }
+                ) { delta ->
                     builder.append(delta)
                     if (!decided) {
                         val start = builder.toString().trimStart()
@@ -307,11 +342,32 @@ class MainActivity : AppCompatActivity() {
                             plainText = !AgentProtocol.looksLikeActionStart(start)
                         }
                     }
+                    if (!contentStarted) {
+                        contentStarted = true
+                        val reasoning = reasoningBuilder.toString().takeIf { it.isNotBlank() }
+                        val display = if (plainText) builder.toString() else getString(R.string.thinking)
+                        runOnUiThread {
+                            updateBubble(
+                                index,
+                                display,
+                                reasoning = reasoning,
+                                reasoningExpanded = false
+                            )
+                        }
+                    }
                     val now = System.currentTimeMillis()
                     if (decided && plainText && now - lastPost >= 60) {
                         lastPost = now
                         val snapshot = builder.toString()
-                        runOnUiThread { updateBubble(index, snapshot) }
+                        val reasoning = reasoningBuilder.toString().takeIf { it.isNotBlank() }
+                        runOnUiThread {
+                            updateBubble(
+                                index,
+                                snapshot,
+                                reasoning = reasoning,
+                                reasoningExpanded = false
+                            )
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -350,20 +406,24 @@ class MainActivity : AppCompatActivity() {
         when {
             pluginCall -> startAgent(index, conversationId)
 
-            step == null -> updateBubble(index, reply.text, reply.reasoning)
+            step == null -> updateBubble(
+                index, reply.text, reply.reasoning, reasoningExpanded = false
+            )
 
             step.action is AgentProtocol.Action.Done ->
                 updateBubble(
                     index,
                     getString(R.string.agent_done, step.action.summary),
-                    reply.reasoning
+                    reply.reasoning,
+                    reasoningExpanded = false
                 )
 
             step.action is AgentProtocol.Action.Ask ->
                 updateBubble(
                     index,
                     getString(R.string.agent_ask, step.action.question),
-                    reply.reasoning
+                    reply.reasoning,
+                    reasoningExpanded = false
                 )
 
             else -> startAgent(index, conversationId)
@@ -380,7 +440,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Updates one bubble in place while a reply streams in. */
-    private fun updateBubble(index: Int, text: String, reasoning: String? = null) {
+    private fun updateBubble(
+        index: Int,
+        text: String,
+        reasoning: String? = null,
+        reasoningExpanded: Boolean? = null
+    ) {
         if (isFinishing || isDestroyed) return
         if (index !in history.indices) return
         history[index] = history[index].copy(
@@ -389,10 +454,11 @@ class MainActivity : AppCompatActivity() {
                 history[index].reasoning
             } else {
                 reasoning.takeIf { it.isNotBlank() }
-            }
+            },
+            reasoningExpanded = reasoningExpanded ?: history[index].reasoningExpanded
         )
         adapter.notifyItemChanged(index)
-        list.scrollToPosition(index)
+        if (autoScroll) list.scrollToPosition(history.size - 1)
     }
 
     private fun ensureNotificationPermission() {

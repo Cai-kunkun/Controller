@@ -64,9 +64,10 @@ class ChatAdapter(
         val context = toggle.context
         box.visibility = View.VISIBLE
         body.text = reasoning
-        body.visibility = View.GONE
-        holder.reasoningExpanded = false
-        toggle.text = "▸ " + context.getString(R.string.reasoning_title)
+        val expanded = msg.reasoningExpanded
+        holder.reasoningExpanded = expanded
+        body.visibility = if (expanded) View.VISIBLE else View.GONE
+        toggle.text = (if (expanded) "▾ " else "▸ ") + context.getString(R.string.reasoning_title)
         toggle.setOnClickListener {
             holder.reasoningExpanded = !holder.reasoningExpanded
             body.visibility = if (holder.reasoningExpanded) View.VISIBLE else View.GONE

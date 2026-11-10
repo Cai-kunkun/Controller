@@ -285,8 +285,11 @@
                         android:layout_height="wrap_content"
                         android:gravity="top|start"
                         android:inputType="textMultiLine|textCapSentences"
+                        android:isScrollContainer="true"
                         android:maxLines="8"
-                        android:minLines="3" />
+                        android:minLines="3"
+                        android:overScrollMode="ifContentScrolls"
+                        android:scrollbars="vertical" />
 
                 </com.google.android.material.textfield.TextInputLayout>
 

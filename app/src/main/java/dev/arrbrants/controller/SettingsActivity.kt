@@ -6,6 +6,7 @@ import dev.arrbrants.controller.data.UpdateChecker
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
@@ -41,6 +42,17 @@ class SettingsActivity : AppCompatActivity() {
         key.setText(SecurePrefs.apiKey(this))
         model.setText(prefs.getString(AppPrefs.KEY_MODEL, ""))
         persona.setText(AppPrefs.persona(this))
+        // Let the multi-line field scroll internally instead of handing the
+        // drag to the surrounding ScrollView.
+        persona.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
+                    view.parent.requestDisallowInterceptTouchEvent(true)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    view.parent.requestDisallowInterceptTouchEvent(false)
+            }
+            false
+        }
         nativeTools.isChecked = prefs.getBoolean(AppPrefs.KEY_NATIVE_TOOLS, true)
 
         val thinkingLabels = arrayOf(

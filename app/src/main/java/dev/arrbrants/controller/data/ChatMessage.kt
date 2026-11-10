@@ -13,5 +13,7 @@ data class ChatMessage(
      */
     val rawContent: String? = null,
     /** DeepSeek chain of thought, shown collapsed above the reply. */
-    val reasoning: String? = null
+    val reasoning: String? = null,
+    /** Streaming-only: whether the thinking block is expanded in the UI. */
+    val reasoningExpanded: Boolean = false
 )

@@ -2,6 +2,15 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc11] - 2026-11-10
+
+- Streaming thoughts are shown expanded while they arrive and collapse as soon
+  as the answer content starts.
+- Chat auto-scroll follows the bottom only while the user is at the bottom; a
+  new chat hides the empty-state hint immediately.
+- The persona field scrolls internally instead of dragging the whole settings
+  page.
+
 ## [1.0.0-rc10] - 2026-11-10
 
 - Release builds use **R8 full mode**: minification, obfuscation, optimization

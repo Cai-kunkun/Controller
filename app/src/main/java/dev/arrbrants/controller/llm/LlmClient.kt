@@ -123,7 +123,12 @@ object LlmClient {
      * arrive. Usage is picked up from the final `include_usage` chunk when the
      * provider supports it; otherwise completion tokens are estimated.
      */
-    fun stream(cfg: Config, msgs: List<Msg>, onDelta: (String) -> Unit): Reply {
+    fun stream(
+        cfg: Config,
+        msgs: List<Msg>,
+        onReasoning: (String) -> Unit = {},
+        onDelta: (String) -> Unit
+    ): Reply {
         val started = System.currentTimeMillis()
         val conn = open(cfg, buildBody(cfg, msgs, stream = true))
         val code = conn.responseCode
@@ -166,6 +171,7 @@ object LlmClient {
                         if (firstTokenAt == 0L) firstTokenAt = now
                         lastTokenAt = now
                         reasoning.append(piece)
+                        onReasoning(piece)
                     }
                 }
 
