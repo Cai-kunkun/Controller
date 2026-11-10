@@ -91,4 +91,17 @@
     <string name="plugins_delete">刪除</string>
     <string name="plugins_import_ok">已匯入 %1$s（預設關閉）</string>
     <string name="plugins_import_failed">匯入失敗：外掛檔案無效</string>
+    <string name="generation_header">生成</string>
+    <string name="persona_header">人格與指令</string>
+    <string name="persona_hint">自訂人格 / 額外指令</string>
+    <string name="persona_note">會追加在基礎工具呼叫規則之後，不會覆蓋 device_action 協議。</string>
+    <string name="about_header">關於</string>
+    <string name="about_version">目前版本 %1$s</string>
+    <string name="check_update">檢查更新</string>
+    <string name="update_checking">正在檢查更新…</string>
+    <string name="update_latest">已是最新版本</string>
+    <string name="update_error">檢查更新失敗，請檢查網路</string>
+    <string name="update_available_title">發現新版本 %1$s</string>
+    <string name="update_open">開啟發佈頁</string>
+    <string name="update_later">稍後</string>
 </resources>

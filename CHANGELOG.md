@@ -2,6 +2,15 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc9] - 2026-11-10
+
+- **Update check**: Settings → About → Check for updates (GitHub releases,
+  semver-aware, opens the release page).
+- **Categorized settings**: Provider / Context / Generation / Persona / About
+  cards instead of one long form.
+- **Custom persona**: free-text persona/extra instructions appended after the
+  built-in device_action prompt, so the tool protocol is preserved.
+
 ## [1.0.0-rc8] - 2026-11-07
 
 - **Agent chooses the starting screen**: the service no longer forces `HOME`

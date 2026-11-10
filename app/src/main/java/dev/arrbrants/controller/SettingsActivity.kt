@@ -2,13 +2,16 @@ package dev.arrbrants.controller
 
 import dev.arrbrants.controller.data.AppPrefs
 import dev.arrbrants.controller.data.SecurePrefs
+import dev.arrbrants.controller.data.UpdateChecker
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
@@ -31,10 +34,13 @@ class SettingsActivity : AppCompatActivity() {
         val nativeTools = findViewById<MaterialSwitch>(R.id.switchTools)
         val keyBalance = findViewById<TextView>(R.id.keyBalance)
         val thinking = findViewById<MaterialAutoCompleteTextView>(R.id.etThinking)
+        val persona = findViewById<TextInputEditText>(R.id.etPersona)
+        val aboutVersion = findViewById<TextView>(R.id.aboutVersion)
 
         url.setText(prefs.getString(AppPrefs.KEY_URL, ""))
         key.setText(SecurePrefs.apiKey(this))
         model.setText(prefs.getString(AppPrefs.KEY_MODEL, ""))
+        persona.setText(AppPrefs.persona(this))
         nativeTools.isChecked = prefs.getBoolean(AppPrefs.KEY_NATIVE_TOOLS, true)
 
         val thinkingLabels = arrayOf(
@@ -56,6 +62,16 @@ class SettingsActivity : AppCompatActivity() {
         val limit = prefs.getInt(AppPrefs.KEY_CONTEXT_WINDOW, AppPrefs.DEFAULT_CONTEXT_WINDOW)
         contextWindow.setText(limit.toString())
 
+        val version = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+        aboutVersion.text = getString(R.string.about_version, version)
+        findViewById<View>(R.id.btnCheckUpdate).setOnClickListener {
+            checkForUpdates(version)
+        }
+
         keyBalance.setOnClickListener { refreshBalance(keyBalance) }
         refreshBalance(keyBalance)
 
@@ -75,6 +91,7 @@ class SettingsActivity : AppCompatActivity() {
                 .putInt(AppPrefs.KEY_CONTEXT_WINDOW, parsedLimit)
                 .putBoolean(AppPrefs.KEY_NATIVE_TOOLS, nativeTools.isChecked)
                 .putString(AppPrefs.KEY_REASONING, thinkingValues[thinkingIndex])
+                .putString(AppPrefs.KEY_PERSONA, persona.text.toString().trim())
                 .apply()
             SecurePrefs.setApiKey(this, key.text.toString().trim())
             Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
@@ -83,6 +100,46 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private var balanceLoading = false
+
+    private fun checkForUpdates(currentVersion: String) {
+        val button = findViewById<View>(R.id.btnCheckUpdate)
+        button.isEnabled = false
+        Toast.makeText(this, R.string.update_checking, Toast.LENGTH_SHORT).show()
+        Thread {
+            val result = UpdateChecker.check(currentVersion)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                button.isEnabled = true
+                when (result) {
+                    is UpdateChecker.Result.Available -> showUpdate(result.info)
+                    UpdateChecker.Result.Latest ->
+                        Toast.makeText(this, R.string.update_latest, Toast.LENGTH_SHORT).show()
+                    UpdateChecker.Result.Error ->
+                        Toast.makeText(this, R.string.update_error, Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun showUpdate(info: UpdateChecker.Info) {
+        val message = if (info.notes.isBlank()) {
+            getString(R.string.update_available_title, info.version)
+        } else {
+            info.notes.take(1200)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.update_available_title, info.version))
+            .setMessage(message)
+            .setPositiveButton(R.string.update_open) { _, _ ->
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.url)))
+                } catch (e: Exception) {
+                    // No browser installed.
+                }
+            }
+            .setNegativeButton(R.string.update_later, null)
+            .show()
+    }
 
     private fun refreshBalance(view: TextView) {
         val cfg = AppPrefs.config(this)

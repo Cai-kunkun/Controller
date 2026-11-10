@@ -7,7 +7,7 @@ endpoint, and executes the returned actions through `su` (KernelSU / Magisk).
 Core loop: **screenshot → LLM → action → repeat** until the task completes or the user
 stops it.
 
-**Status: 1.0.0-rc8** — release candidate ([CHANGELOG](CHANGELOG.md)).
+**Status: 1.0.0-rc9** — release candidate ([CHANGELOG](CHANGELOG.md)).
 
 ## Features
 
@@ -48,6 +48,8 @@ stops it.
 - **Font**: bundled Google Sans Flex (SIL OFL) across the UI.
 - **Declarative plugins**: JSON-defined tools (shell / HTTP / UI steps) exposed to
   the model as `plugin_<id>`; import, enable, disable and delete in Settings.
+- **Custom persona**: append your own persona/instructions after the built-in
+  tool-calling prompt; categorized settings and an in-app update check.
 - **Attachments**: pick images or text files. Images are downscaled and sent to the
   vision model; text is inlined; other binaries are announced by name/type.
 - **Encrypted API key**: stored in Keystore-backed `EncryptedSharedPreferences`,

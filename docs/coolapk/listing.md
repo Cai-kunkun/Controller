@@ -9,7 +9,7 @@
 | 分类 | 效率 / 工具 |
 | 标签 | AI、自动化、Root、效率、DeepSeek、Agent、Markdown |
 | 包名 | `dev.arrbrants.controller` |
-| 版本 | `1.0.0-rc8`（versionCode 31） |
+| 版本 | `1.0.0-rc9`（versionCode 32） |
 | 大小 | 约 5.5 MB |
 | 最低系统 | Android 7.0 |
 | 开源地址 | https://github.com/Cai-kunkun/Controller |
@@ -48,6 +48,8 @@ Controller 把「聊天」和「操作手机」合成了一个对话。
 - **思考过程**：DeepSeek reasoning 默认折叠展示，可点开查看
 - **字体**：全应用使用 Google Sans Flex（SIL OFL）
 - **插件**：导入 JSON 插件，模型可按需调用 shell / HTTP / UI 步骤
+- **自定义人格**：在基础工具调用 prompt 后追加自己的设定
+- **检查更新**：设置里直接检查 GitHub Release
 - **深色 UI**：Material 3，支持动态取色
 
 ## 使用步骤
@@ -68,10 +70,12 @@ Controller 把「聊天」和「操作手机」合成了一个对话。
 Root 自动化可以点击和输入屏幕上的任何位置。请在使用时盯着运行过程，确认目标应用和内容无误，
 并随时使用停止按钮。不要用它绕过应用的限制或进行违规操作。
 
-## 更新日志（1.0.0-rc8）
+## 更新日志（1.0.0-rc9）
 
-- Agent 不再强制回桌面：先看当前屏幕，由模型决定是否需要按 Home
-- 其他同 1.0.0-rc7
+- 设置页分区：服务商 / 上下文 / 生成 / 人格 / 关于
+- 新增检查更新（GitHub Release）
+- 新增自定义人格与额外指令（保留基础工具调用协议）
+- 其他同 1.0.0-rc8
 
 ## 截图
 

@@ -289,7 +289,7 @@ class MainActivity : AppCompatActivity() {
 
         Thread {
             val requestMessages = MessageMapper.chat(
-                this, snapshot, AgentProtocol.systemPrompt()
+                this, snapshot, AgentProtocol.systemPrompt(AppPrefs.persona(this))
             )
             val builder = StringBuilder()
             var decided = false

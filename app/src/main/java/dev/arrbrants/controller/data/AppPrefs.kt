@@ -21,6 +21,7 @@ object AppPrefs {
     const val KEY_STATS_COLLAPSED = "stats_collapsed"
     const val KEY_NATIVE_TOOLS = "native_tools"
     const val KEY_REASONING = "reasoning_effort"
+    const val KEY_PERSONA = "persona"
 
     const val DEFAULT_CONTEXT_WINDOW = 128_000
     const val MIN_CONTEXT_WINDOW = 8_192
@@ -48,6 +49,10 @@ object AppPrefs {
     /** "", none, low, high or max. Empty means "do not send". */
     fun reasoning(context: Context): String =
         get(context).getString(KEY_REASONING, "").orEmpty()
+
+    /** Extra persona/instructions appended after the built-in tool prompt. */
+    fun persona(context: Context): String =
+        get(context).getString(KEY_PERSONA, "").orEmpty()
 
     fun statsCollapsed(context: Context): Boolean =
         get(context).getBoolean(KEY_STATS_COLLAPSED, false)

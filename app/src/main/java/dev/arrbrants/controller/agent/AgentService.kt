@@ -168,7 +168,10 @@ class AgentService : Service() {
             // Whether to open the launcher is now the model's decision.
             Thread.sleep(800)
 
-            val systemMsg = LlmClient.Msg("system", AgentProtocol.systemPrompt())
+            val systemMsg = LlmClient.Msg(
+                "system",
+                AgentProtocol.systemPrompt(AppPrefs.persona(this))
+            )
             val seed = ConversationStore.loadAll(prefs).find { it.id == conversationId }
             val msgs = ArrayList<LlmClient.Msg>()
             msgs.add(systemMsg)

@@ -36,7 +36,8 @@ object AgentProtocol {
 
     data class Step(val thought: String, val action: Action, val notes: String? = null)
 
-    fun systemPrompt(): String = """
+    fun systemPrompt(persona: String = ""): String {
+        val base = """
         You are Controller, the user's on-device assistant. You can both chat and operate the user's Android phone.
 
         Decide what each message needs:
@@ -103,6 +104,9 @@ object AgentProtocol {
         - A search showing no results does not mean your text was not entered; try a different wording (e.g. the device's local language variant) before retyping.
         - Call action="done" as soon as the task is complete.
     """.trimIndent()
+        if (persona.isBlank()) return base
+        return base + "\n\n## User persona and extra instructions\n" + persona.trim()
+    }
 
     fun stepPrompt(step: Int, lastResult: String?, notes: String?, advice: String?): String {
         val sb = StringBuilder("Step ").append(step).append('.')
