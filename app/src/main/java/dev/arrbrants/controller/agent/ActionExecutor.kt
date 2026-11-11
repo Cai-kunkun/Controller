@@ -75,7 +75,7 @@ class ActionExecutor(
     }
 
     private fun run(command: String): String? {
-        val result = RootShell.exec(command)
+        val result = Shell.exec(command)
         return if (result.ok) null
         else result.stderr.ifBlank { result.stdout }.ifBlank { "exit ${result.code}" }
     }
@@ -86,7 +86,7 @@ class ActionExecutor(
      */
     private fun tapByText(label: String): String? {
         val file = "/data/local/tmp/controller_ui.xml"
-        val dump = RootShell.exec(
+        val dump = Shell.exec(
             "uiautomator dump $file >/dev/null 2>&1; cat $file 2>/dev/null; rm -f $file",
             20000
         )

@@ -148,13 +148,16 @@ class AgentService : Service() {
                 appendMessage(conversationId, ChatMessage("assistant", getString(R.string.need_setup)))
                 return
             }
-            if (!RootShell.isRootAvailable()) {
-                appendMessage(conversationId, ChatMessage("assistant", getString(R.string.agent_need_root)))
+            if (!Shell.isAvailable()) {
+                appendMessage(
+                    conversationId,
+                    ChatMessage("assistant", getString(R.string.agent_need_shell))
+                )
                 return
             }
 
             // Ask the low-memory killer to spare us while a heavy app (game) runs.
-            RootShell.exec("echo -300 > /proc/${Process.myPid()}/oom_score_adj")
+            Shell.exec("echo -300 > /proc/${Process.myPid()}/oom_score_adj")
 
             // Status banner on top of everything, so the user can watch along.
             if (ensureOverlayPermission()) {
@@ -200,7 +203,7 @@ class AgentService : Service() {
                     // should see the raw screen, not our overlay.
                     overlay?.hideForCapture()
                     Thread.sleep(250)
-                    val s = ScreenCapture.capture(app)
+                    val s = ScreenCapture.capture()
                     overlay?.showAfterCapture()
                     s
                 } catch (e: Exception) {
@@ -392,10 +395,10 @@ class AgentService : Service() {
         }
     }
 
-    /** Root-grants the overlay permission so the status banner can be shown. */
+    /** Grants the overlay permission through the shell so the status banner can be shown. */
     private fun ensureOverlayPermission(): Boolean {
         if (Settings.canDrawOverlays(this)) return true
-        RootShell.exec("appops set $packageName SYSTEM_ALERT_WINDOW allow")
+        Shell.exec("appops set $packageName SYSTEM_ALERT_WINDOW allow")
         return Settings.canDrawOverlays(this)
     }
 

@@ -36,6 +36,7 @@ class SettingsActivity : AppCompatActivity() {
         add(R.string.settings_generation, generationSummary(), GenerationSettingsActivity::class.java)
         add(R.string.settings_context, contextSummary(), ContextSettingsActivity::class.java)
         add(R.string.settings_persona, personaSummary(), PersonaSettingsActivity::class.java)
+        add(R.string.settings_execution, executionSummary(), ExecutionSettingsActivity::class.java)
         add(R.string.settings_plugins, pluginsSummary(), PluginsActivity::class.java)
         add(R.string.settings_about, aboutSummary(), AboutSettingsActivity::class.java)
         versionFooter.text = "Controller ${versionName()}"
@@ -72,6 +73,14 @@ class SettingsActivity : AppCompatActivity() {
     } else {
         getString(R.string.settings_summary_custom)
     }
+
+    private fun executionSummary(): String = getString(
+        when (AppPrefs.shellMode(this)) {
+            "shizuku" -> R.string.execution_shizuku
+            "adb" -> R.string.execution_adb
+            else -> R.string.execution_root
+        }
+    )
 
     private fun pluginsSummary(): String = getString(
         R.string.settings_summary_plugins,

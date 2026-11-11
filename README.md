@@ -1,16 +1,21 @@
 # Controller
 
-Controller is an on-device automation agent for rooted Android devices. It captures
+Controller is an on-device automation agent for Android. It captures
 screenshots, sends them to a vision LLM through any OpenAI-compatible `chat/completions`
-endpoint, and executes the returned actions through `su` (KernelSU / Magisk).
+endpoint, and executes the returned actions through root (`su`), **Shizuku**, or
+**ADB wireless debugging**.
 
 Core loop: **screenshot → LLM → action → repeat** until the task completes or the user
 stops it.
 
-**Status: 1.0.0-rc14** — release candidate ([CHANGELOG](CHANGELOG.md)).
+**Status: 1.0.0-rc15** — release candidate ([CHANGELOG](CHANGELOG.md)).
 
 ## Features
 
+- **Three execution modes**: run actions as **root** (`su`, KernelSU / Magisk),
+  through **Shizuku** (authorize once, no root needed), or over **ADB wireless
+  debugging** (pair with the port and 6-digit code). Pick one in
+  Settings → Execution mode; every shell call goes through it.
 - **One conversation, two behaviours**: plain text for chat, or a `device_action`
   tool call to drive the phone — the model chooses per message, no mode switch.
 - **DSML + native tool calling**: DeepSeek V4's `<｜DSML｜tool_calls>` envelope is
@@ -62,15 +67,19 @@ stops it.
 ```
 app/src/main/java/dev/arrbrants/controller/
 ├── MainActivity.kt          chat UI, streaming, attachments, stats panel
-├── SettingsActivity.kt      provider / context / tool settings
+├── SettingsActivity.kt      category list of settings screens
 ├── PluginsActivity.kt       plugin import / enable / delete
 ├── agent/                   on-device automation runtime
 │   ├── AgentService.kt      foreground service + agent loop
 │   ├── AgentProtocol.kt     action protocol, DSML/JSON parsing, prompt
-│   ├── ActionExecutor.kt    root taps, typing, sequences
+│   ├── ActionExecutor.kt    taps, typing, sequences
 │   ├── PluginExecutor.kt    runs shell / HTTP / UI plugin steps
 │   ├── AgentOverlay.kt      floating status banner
+│   ├── Shell.kt             root / Shizuku / ADB dispatcher
 │   ├── RootShell.kt         su command helper
+│   ├── ShizukuBackend.kt    shell through Shizuku
+│   ├── AdbBackend.kt        shell through ADB wireless debugging
+│   ├── AdbManager.kt        LibADB connection + persisted ADB key
 │   ├── ScreenCapture.kt     screencap + coordinate grid
 │   ├── ShotThumbs.kt        thumbnail cache
 │   └── UiDump.kt            uiautomator label lookup
@@ -94,7 +103,10 @@ app/src/main/java/dev/arrbrants/controller/
 
 ## Requirements
 
-- A rooted device (KernelSU / Magisk). Grant root to Controller manually in the manager.
+- One way to run shell commands with elevated privileges:
+  - **Root** (KernelSU / Magisk) — grant root to Controller in the manager, or
+  - **Shizuku** — start Shizuku and authorize Controller, or
+  - **ADB wireless debugging** — Android 11+, pair once from Settings.
 - An OpenAI-compatible `chat/completions` endpoint with a vision model
   (e.g. `deepseek-flash`).
 - Android 7.0+ (`minSdk 24`).
@@ -108,7 +120,8 @@ Download the signed APK from the
 adb install -r app-release.apk
 ```
 
-Root (KernelSU / Magisk) is required; grant Controller root in the manager.
+Root, Shizuku or ADB wireless debugging is required; grant one in
+**Settings → Execution mode**.
 
 ## Build
 
@@ -157,7 +170,8 @@ touching anything, so it can decide with full information.
 
 ## Known limitations
 
-- Root (KernelSU / Magisk) is required.
+- One of root, Shizuku or ADB wireless debugging is required; ADB pairing needs
+  Android 11+ and wireless debugging kept on.
 - Binary attachments are announced by name/type; their content is not uploaded.
 - The agent can tap and type anywhere. Watch the run and use Stop.
 - Validated against DeepSeek V4.1 Flash through an OpenAI-compatible endpoint;
@@ -165,13 +179,15 @@ touching anything, so it can decide with full information.
 
 ## Safety
 
-Root-powered automation can tap anywhere and type anywhere. Keep an eye on it, use the
-Stop button, and review the conversation log to see exactly what was done.
+Root, Shizuku or ADB wireless debugging-powered automation can tap anywhere and type
+anywhere. Keep an eye on it, use the Stop button, and review the conversation log to see
+exactly what was done.
 ## 中文简介
 
-Controller：截屏 → 视觉大模型分析 → 通过 root 执行操作（点击/双击/长按/滑动/输入），
-自动完成手机上的 UI 任务。聊天和自动操作合并成同一个对话：模型自己判断这条消息是聊天
-（流式文字回答）还是要动手机（返回 JSON 动作）。需要 root（KernelSU/Magisk）和一个支持
-视觉的 OpenAI 兼容接口（如 `deepseek-flash`）。支持中文输入、坐标网格、便签记忆，微信/
-游戏等隐藏无障碍树的 App 也能操作。单步还可以用 `sequence` 串起多个动作按顺序执行，
-压缩长流程的步数。
+Controller：截屏 → 视觉大模型分析 → 通过 root、Shizuku 或 ADB 无线调试执行操作
+（点击/双击/长按/滑动/输入），自动完成手机上的 UI 任务。聊天和自动操作合并成同一个对话：
+模型自己判断这条消息是聊天（流式文字回答）还是要动手机（返回 JSON 动作）。执行方式在
+设置 → 执行方式中选择：root（KernelSU/Magisk）、Shizuku 授权，或 Android 11+ 的
+ADB 无线调试配对。还需要一个支持视觉的 OpenAI 兼容接口（如 `deepseek-flash`）。支持中文
+输入、坐标网格、便签记忆，微信/游戏等隐藏无障碍树的 App 也能操作。单步还可以用
+`sequence` 串起多个动作按顺序执行，压缩长流程的步数。

@@ -2,6 +2,21 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc15] - 2026-11-12
+
+- **Three execution modes** replacing the hard-coded `su` path:
+  - **Root** — unchanged `su` behaviour (KernelSU / Magisk).
+  - **Shizuku** — authorize Controller in Shizuku and run shell commands with
+    ADB-level privileges, no root needed.
+  - **ADB wireless debugging** — pair once with the pairing port and 6-digit
+    code (Android 11+), then commands run through the local `adbd`.
+- Settings → **Execution mode** screen: pick the backend, see its status,
+  authorize Shizuku, and pair / connect / disconnect ADB.
+- Screenshots now read `screencap -p` from stdout, so they work in every mode
+  (the shell user cannot write into the app's private cache).
+- R8 keep rules for Shizuku, LibADB, Conscrypt and the bundled certificate
+  classes.
+
 ## [1.0.0-rc14] - 2026-11-11
 
 - Composer chips: a **Deep thinking** toggle, a thinking-level chip that opens

@@ -30,6 +30,40 @@ object RootShell {
 
     fun exec(command: String, timeoutMs: Long = 20000): Result {
         val process = startSu(command)
+        return runProcess(process, timeoutMs)
+    }
+
+    /** Runs a command and returns its raw stdout (used for binary output such as `screencap -p`). */
+    fun execBytes(command: String, timeoutMs: Long = 20000): ByteArray {
+        val process = startSu(command)
+        return readProcessBytes(process, timeoutMs, command)
+    }
+
+    /** Shared by the root, Shizuku and ADB backends. */
+    internal fun readProcessBytes(process: Process, timeoutMs: Long, command: String): ByteArray {
+        val err = StringBuilder()
+        val pumpErr = Thread {
+            try {
+                process.errorStream.bufferedReader().forEachLine { err.appendLine(it) }
+            } catch (e: Exception) {
+                // Stream closed; nothing to do.
+            }
+        }
+        pumpErr.start()
+        val bytes = process.inputStream.readBytes()
+        if (!process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
+            process.destroyForcibly()
+            throw IOException("Command timed out: $command")
+        }
+        pumpErr.join(500)
+        if (bytes.isEmpty() && process.exitValue() != 0) {
+            throw IOException(err.toString().trim().ifBlank { "Command failed (${process.exitValue()})" })
+        }
+        return bytes
+    }
+
+    /** Shared by the root and Shizuku backends. */
+    internal fun runProcess(process: Process, timeoutMs: Long): Result {
         val out = StringBuilder()
         val err = StringBuilder()
         val pumpOut = Thread {
@@ -50,7 +84,7 @@ object RootShell {
         pumpErr.start()
         if (!process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
             process.destroyForcibly()
-            throw IOException("Command timed out: $command")
+            throw IOException("Command timed out")
         }
         pumpOut.join(500)
         pumpErr.join(500)

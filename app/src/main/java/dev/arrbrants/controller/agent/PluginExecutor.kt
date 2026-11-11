@@ -42,7 +42,7 @@ class PluginExecutor(
     }
 
     private fun shell(command: String): String {
-        val result = RootShell.exec(command, 20_000)
+        val result = Shell.exec(command, 20_000)
         val out = result.stdout.trim()
         val err = result.stderr.trim()
         if (!result.ok) {

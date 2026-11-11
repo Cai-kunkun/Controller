@@ -30,16 +30,13 @@ object ScreenCapture {
         val sentHeight: Int
     )
 
-    fun capture(context: Context): Shot {
-        val tmp = File(context.cacheDir, "screencap.png")
-        tmp.delete()
-        val res = RootShell.exec("screencap -p ${RootShell.shellQuote(tmp.absolutePath)}", 15000)
-        if (!tmp.exists() || tmp.length() == 0L) {
-            throw IOException("screencap failed: ${res.stderr.ifBlank { res.stdout }}")
-        }
-        val full = BitmapFactory.decodeFile(tmp.absolutePath)
+    fun capture(): Shot {
+        // Read the PNG straight from stdout: ADB and Shizuku run as the shell
+        // user and cannot write into the app's private cache directory.
+        val png = Shell.execBytes("screencap -p", 15000)
+        if (png.isEmpty()) throw IOException("screencap returned no data")
+        val full = BitmapFactory.decodeByteArray(png, 0, png.size)
             ?: throw IOException("Could not decode screenshot")
-        tmp.delete()
 
         val screenWidth = full.width
         val screenHeight = full.height

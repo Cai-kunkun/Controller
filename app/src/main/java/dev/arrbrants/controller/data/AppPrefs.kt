@@ -23,6 +23,7 @@ object AppPrefs {
     const val KEY_REASONING = "reasoning_effort"
     const val KEY_REASONING_LAST = "reasoning_effort_last"
     const val KEY_PERSONA = "persona"
+    const val KEY_SHELL_MODE = "shell_mode"
 
     const val DEFAULT_CONTEXT_WINDOW = 128_000
     const val MIN_CONTEXT_WINDOW = 8_192
@@ -63,6 +64,10 @@ object AppPrefs {
     /** Extra persona/instructions appended after the built-in tool prompt. */
     fun persona(context: Context): String =
         get(context).getString(KEY_PERSONA, "").orEmpty()
+
+    /** root, shizuku or adb. */
+    fun shellMode(context: Context): String =
+        get(context).getString(KEY_SHELL_MODE, "root").orEmpty()
 
     fun statsCollapsed(context: Context): Boolean =
         get(context).getBoolean(KEY_STATS_COLLAPSED, true)
