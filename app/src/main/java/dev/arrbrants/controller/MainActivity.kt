@@ -42,6 +42,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.chip.Chip
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.util.Locale
 
@@ -75,6 +76,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var balanceText: TextView
     private lateinit var statsBody: View
     private lateinit var statsToggle: ImageView
+    private lateinit var chipThinking: Chip
+    private lateinit var drawerSubtitle: TextView
     private lateinit var pendingRow: LinearLayout
     private lateinit var pendingScroll: View
     private var statsCollapsed = false
@@ -125,6 +128,8 @@ class MainActivity : AppCompatActivity() {
         balanceText = findViewById(R.id.balanceText)
         statsBody = findViewById(R.id.statsBody)
         statsToggle = findViewById(R.id.statsToggle)
+        chipThinking = findViewById(R.id.chipThinking)
+        drawerSubtitle = findViewById(R.id.drawerSubtitle)
         pendingRow = findViewById(R.id.pendingRow)
         pendingScroll = findViewById(R.id.pendingScroll)
         adapter = ChatAdapter { history }
@@ -149,7 +154,16 @@ class MainActivity : AppCompatActivity() {
 
         toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)
+        supportActionBar?.setDisplayShowTitleEnabled(false)
         toolbar.setNavigationOnClickListener { drawerLayout.openDrawer(Gravity.START) }
+
+        chipThinking.setOnClickListener {
+            startActivity(Intent(this, GenerationSettingsActivity::class.java))
+        }
+        findViewById<View>(R.id.btnSettings).setOnClickListener {
+            drawerLayout.closeDrawer(Gravity.START)
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
 
         findViewById<View>(R.id.btnNewChat).setOnClickListener { newChat() }
         findViewById<View>(R.id.btnAttach).setOnClickListener {
@@ -184,8 +198,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.action_settings -> {
-                startActivity(Intent(this, SettingsActivity::class.java))
+            R.id.action_new_chat -> {
+                newChat()
                 true
             }
             R.id.action_stop -> {
@@ -558,16 +572,19 @@ class MainActivity : AppCompatActivity() {
         if (!empty) {
             list.scrollToPosition(history.size - 1)
         }
-        updateToolbarSubtitle()
+        updateHeader()
         refreshStats()
     }
 
-    private fun updateToolbarSubtitle() {
+    private fun updateHeader() {
         val model = prefs.getString(AppPrefs.KEY_MODEL, "")?.trim().orEmpty()
-        val base = model.ifBlank { getString(R.string.app_subtitle) }
-        val effort = AppPrefs.reasoning(this)
-        val label = if (effort.isBlank()) "" else AppPrefs.reasoningLabel(this)
-        toolbar.subtitle = if (label.isBlank()) base else "$base · $label"
+        val label = AppPrefs.reasoningLabel(this)
+        chipThinking.text = getString(R.string.thinking_chip, label)
+        drawerSubtitle.text = if (model.isBlank()) {
+            getString(R.string.app_subtitle)
+        } else {
+            "$model · $label"
+        }
     }
 
     private fun refreshStats() {

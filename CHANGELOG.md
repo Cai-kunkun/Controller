@@ -2,6 +2,14 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc13] - 2026-11-11
+
+- Main screen follows the DeepSeek app layout: minimal top bar, centered logo
+  with a start phrase, and a large composer with the input above a row of
+  chips / attach / send.
+- The thinking-effort chip shows the current level and opens Generation
+  settings; stats moved into the drawer; settings moved into the drawer header.
+
 ## [1.0.0-rc12] - 2026-11-10
 
 - Settings split into a category list plus separate, auto-saving activities

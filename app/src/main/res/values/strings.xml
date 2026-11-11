@@ -118,4 +118,6 @@
     <string name="settings_summary_custom">Customized</string>
     <string name="settings_summary_default">Default</string>
     <string name="settings_summary_plugins">%1$d enabled</string>
+    <string name="empty_start">Start anytime</string>
+    <string name="thinking_chip">Thinking %1$s</string>
 </resources>

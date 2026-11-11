@@ -117,4 +117,6 @@
     <string name="settings_summary_custom">已自定义</string>
     <string name="settings_summary_default">默认</string>
     <string name="settings_summary_plugins">%1$d 个已启用</string>
+    <string name="empty_start">随时开始吧</string>
+    <string name="thinking_chip">思考 %1$s</string>
 </resources>
