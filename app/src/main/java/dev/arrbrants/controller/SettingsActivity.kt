@@ -54,15 +54,13 @@ class SettingsActivity : AppCompatActivity() {
         return model.ifBlank { getString(R.string.settings_summary_unset) }
     }
 
-    private fun generationSummary(): String {
-        val label = AppPrefs.reasoningLabel(this)
-        val tools = if (AppPrefs.nativeTools(this)) {
+    private fun generationSummary(): String = getString(
+        if (AppPrefs.nativeTools(this)) {
             R.string.settings_summary_native_on
         } else {
             R.string.settings_summary_native_off
         }
-        return "$label · ${getString(tools)}"
-    }
+    )
 
     private fun contextSummary(): String = getString(
         R.string.settings_summary_context,

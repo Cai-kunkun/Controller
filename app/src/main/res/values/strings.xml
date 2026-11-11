@@ -120,4 +120,8 @@
     <string name="settings_summary_plugins">%1$d enabled</string>
     <string name="empty_start">Start anytime</string>
     <string name="thinking_chip">Thinking %1$s</string>
+    <string name="deep_thinking">Deep thinking</string>
+    <string name="model_chip_empty">Choose model</string>
+    <string name="model_loading">Loading models…</string>
+    <string name="model_fetch_failed">Could not fetch models</string>
 </resources>

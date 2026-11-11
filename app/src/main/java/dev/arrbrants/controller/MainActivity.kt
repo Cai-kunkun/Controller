@@ -12,6 +12,7 @@ import dev.arrbrants.controller.data.StatsStore
 import dev.arrbrants.controller.llm.DeepSeekBalance
 import dev.arrbrants.controller.llm.LlmClient
 import dev.arrbrants.controller.llm.MessageMapper
+import dev.arrbrants.controller.llm.ModelCatalog
 import dev.arrbrants.controller.llm.TokenBudget
 import dev.arrbrants.controller.ui.ChatAdapter
 import dev.arrbrants.controller.ui.ConversationAdapter
@@ -33,6 +34,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -77,6 +79,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statsBody: View
     private lateinit var statsToggle: ImageView
     private lateinit var chipThinking: Chip
+    private lateinit var chipDeep: Chip
+    private lateinit var chipModel: Chip
     private lateinit var drawerSubtitle: TextView
     private lateinit var pendingRow: LinearLayout
     private lateinit var pendingScroll: View
@@ -129,6 +133,8 @@ class MainActivity : AppCompatActivity() {
         statsBody = findViewById(R.id.statsBody)
         statsToggle = findViewById(R.id.statsToggle)
         chipThinking = findViewById(R.id.chipThinking)
+        chipDeep = findViewById(R.id.chipDeep)
+        chipModel = findViewById(R.id.chipModel)
         drawerSubtitle = findViewById(R.id.drawerSubtitle)
         pendingRow = findViewById(R.id.pendingRow)
         pendingScroll = findViewById(R.id.pendingScroll)
@@ -157,9 +163,9 @@ class MainActivity : AppCompatActivity() {
         supportActionBar?.setDisplayShowTitleEnabled(false)
         toolbar.setNavigationOnClickListener { drawerLayout.openDrawer(Gravity.START) }
 
-        chipThinking.setOnClickListener {
-            startActivity(Intent(this, GenerationSettingsActivity::class.java))
-        }
+        chipDeep.setOnClickListener { toggleDeepThinking() }
+        chipThinking.setOnClickListener { showThinkingMenu() }
+        chipModel.setOnClickListener { fetchModels() }
         findViewById<View>(R.id.btnSettings).setOnClickListener {
             drawerLayout.closeDrawer(Gravity.START)
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -578,13 +584,107 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateHeader() {
         val model = prefs.getString(AppPrefs.KEY_MODEL, "")?.trim().orEmpty()
+        val effort = AppPrefs.reasoning(this)
         val label = AppPrefs.reasoningLabel(this)
+        chipDeep.isChecked = effort != "none"
         chipThinking.text = getString(R.string.thinking_chip, label)
+        chipModel.text = model.ifBlank { getString(R.string.model_chip_empty) }
         drawerSubtitle.text = if (model.isBlank()) {
             getString(R.string.app_subtitle)
         } else {
             "$model · $label"
         }
+    }
+
+    private fun toggleDeepThinking() {
+        val current = AppPrefs.reasoning(this)
+        val editor = prefs.edit()
+        if (current == "none") {
+            val last = prefs.getString(AppPrefs.KEY_REASONING_LAST, "high").orEmpty()
+            editor.putString(AppPrefs.KEY_REASONING, last.ifBlank { "high" })
+        } else {
+            editor.putString(AppPrefs.KEY_REASONING_LAST, current.ifBlank { "high" })
+            editor.putString(AppPrefs.KEY_REASONING, "none")
+        }
+        editor.apply()
+        updateHeader()
+    }
+
+    private fun showThinkingMenu() {
+        val popup = PopupMenu(this, chipThinking)
+        val options = listOf(
+            "" to R.string.thinking_default,
+            "none" to R.string.thinking_none,
+            "low" to R.string.thinking_low,
+            "high" to R.string.thinking_high,
+            "max" to R.string.thinking_max
+        )
+        val current = AppPrefs.reasoning(this)
+        options.forEachIndexed { index, pair ->
+            val item = popup.menu.add(0, index, index, getString(pair.second))
+            item.isCheckable = true
+            item.isChecked = pair.first == current
+        }
+        popup.setOnMenuItemClickListener { item ->
+            val value = options[item.itemId].first
+            val editor = prefs.edit()
+            when {
+                value == "none" -> {
+                    editor.putString(
+                        AppPrefs.KEY_REASONING_LAST,
+                        current.ifBlank { "high" }
+                    )
+                    editor.putString(AppPrefs.KEY_REASONING, "none")
+                }
+                value.isBlank() -> editor.putString(AppPrefs.KEY_REASONING, "")
+                else -> {
+                    editor.putString(AppPrefs.KEY_REASONING_LAST, value)
+                    editor.putString(AppPrefs.KEY_REASONING, value)
+                }
+            }
+            editor.apply()
+            updateHeader()
+            true
+        }
+        popup.show()
+    }
+
+    private fun fetchModels() {
+        val cfg = AppPrefs.config(this)
+        if (cfg.baseUrl.isBlank() || cfg.apiKey.isBlank()) {
+            Toast.makeText(this, R.string.need_setup, Toast.LENGTH_LONG).show()
+            startActivity(Intent(this, ProviderSettingsActivity::class.java))
+            return
+        }
+        chipModel.text = getString(R.string.model_loading)
+        Thread {
+            val models = ModelCatalog.list(cfg)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                updateHeader()
+                if (models.isEmpty()) {
+                    Toast.makeText(this, R.string.model_fetch_failed, Toast.LENGTH_LONG).show()
+                } else {
+                    showModelMenu(models)
+                }
+            }
+        }.start()
+    }
+
+    private fun showModelMenu(models: List<String>) {
+        val popup = PopupMenu(this, chipModel)
+        val current = prefs.getString(AppPrefs.KEY_MODEL, "").orEmpty()
+        models.forEachIndexed { index, id ->
+            val item = popup.menu.add(0, index, index, id)
+            item.isCheckable = true
+            item.isChecked = id == current
+        }
+        popup.setOnMenuItemClickListener { item ->
+            prefs.edit().putString(AppPrefs.KEY_MODEL, models[item.itemId]).apply()
+            updateHeader()
+            true
+        }
+        popup.show()
     }
 
     private fun refreshStats() {

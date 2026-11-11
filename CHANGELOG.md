@@ -2,6 +2,15 @@
 
 All notable changes to Controller are documented here.
 
+## [1.0.0-rc14] - 2026-11-11
+
+- Composer chips: a **Deep thinking** toggle, a thinking-level chip that opens
+  a dropdown (PopupMenu), and a model chip that fetches `/models` with the API
+  key and switches the model.
+- The thinking-level setting is removed from Settings; Generation keeps only
+  native tool calling.
+- The stats card lives in the drawer, collapsed by default and expandable.
+
 ## [1.0.0-rc13] - 2026-11-11
 
 - Main screen follows the DeepSeek app layout: minimal top bar, centered logo

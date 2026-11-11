@@ -119,4 +119,8 @@
     <string name="settings_summary_plugins">%1$d 個已啟用</string>
     <string name="empty_start">隨時開始吧</string>
     <string name="thinking_chip">思考 %1$s</string>
+    <string name="deep_thinking">深度思考</string>
+    <string name="model_chip_empty">選擇模型</string>
+    <string name="model_loading">取得模型中…</string>
+    <string name="model_fetch_failed">取得模型失敗</string>
 </resources>

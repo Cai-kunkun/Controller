@@ -21,6 +21,7 @@ object AppPrefs {
     const val KEY_STATS_COLLAPSED = "stats_collapsed"
     const val KEY_NATIVE_TOOLS = "native_tools"
     const val KEY_REASONING = "reasoning_effort"
+    const val KEY_REASONING_LAST = "reasoning_effort_last"
     const val KEY_PERSONA = "persona"
 
     const val DEFAULT_CONTEXT_WINDOW = 128_000
@@ -64,7 +65,7 @@ object AppPrefs {
         get(context).getString(KEY_PERSONA, "").orEmpty()
 
     fun statsCollapsed(context: Context): Boolean =
-        get(context).getBoolean(KEY_STATS_COLLAPSED, false)
+        get(context).getBoolean(KEY_STATS_COLLAPSED, true)
 
     fun currentConversation(context: Context): Long =
         get(context).getLong(KEY_CURRENT, -1L)

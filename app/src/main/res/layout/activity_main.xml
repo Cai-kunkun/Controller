@@ -133,27 +133,76 @@
                         android:paddingEnd="8dp"
                         android:paddingBottom="8dp">
 
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chipThinking"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:checkable="false"
-                            android:clickable="true"
-                            android:focusable="true"
-                            android:text="@string/thinking_effort"
-                            android:textColor="?attr/colorOnSurface"
-                            android:textSize="12sp"
-                            app:chipBackgroundColor="?attr/colorSurfaceContainerHighest"
-                            app:chipIcon="@drawable/ic_thinking"
-                            app:chipIconTint="?attr/colorPrimary"
-                            app:chipStrokeColor="?attr/colorOutlineVariant"
-                            app:chipStrokeWidth="1dp"
-                            app:ensureMinTouchTargetSize="false" />
-
-                        <Space
+                        <HorizontalScrollView
                             android:layout_width="0dp"
-                            android:layout_height="1dp"
-                            android:layout_weight="1" />
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fillViewport="false"
+                            android:scrollbars="none">
+
+                            <LinearLayout
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal">
+
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/chipDeep"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:checkable="true"
+                                    android:clickable="true"
+                                    android:focusable="true"
+                                    android:text="@string/deep_thinking"
+                                    android:textColor="@color/chip_text"
+                                    android:textSize="12sp"
+                                    app:checkedIconVisible="false"
+                                    app:chipBackgroundColor="@color/chip_bg"
+                                    app:chipIcon="@drawable/ic_thinking"
+                                    app:chipIconTint="?attr/colorPrimary"
+                                    app:chipStrokeColor="?attr/colorOutlineVariant"
+                                    app:chipStrokeWidth="1dp"
+                                    app:ensureMinTouchTargetSize="false" />
+
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/chipThinking"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="6dp"
+                                    android:checkable="false"
+                                    android:clickable="true"
+                                    android:focusable="true"
+                                    android:text="@string/thinking_effort"
+                                    android:textColor="@color/chip_text"
+                                    android:textSize="12sp"
+                                    app:chipBackgroundColor="@color/chip_bg"
+                                    app:chipIcon="@drawable/ic_thinking"
+                                    app:chipIconTint="?attr/colorPrimary"
+                                    app:chipStrokeColor="?attr/colorOutlineVariant"
+                                    app:chipStrokeWidth="1dp"
+                                    app:ensureMinTouchTargetSize="false" />
+
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/chipModel"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="6dp"
+                                    android:checkable="false"
+                                    android:clickable="true"
+                                    android:focusable="true"
+                                    android:text="@string/model_chip_empty"
+                                    android:textColor="@color/chip_text"
+                                    android:textSize="12sp"
+                                    app:chipBackgroundColor="@color/chip_bg"
+                                    app:chipIcon="@drawable/ic_model"
+                                    app:chipIconTint="?attr/colorPrimary"
+                                    app:chipStrokeColor="?attr/colorOutlineVariant"
+                                    app:chipStrokeWidth="1dp"
+                                    app:ensureMinTouchTargetSize="false" />
+
+                            </LinearLayout>
+
+                        </HorizontalScrollView>
 
                         <ImageButton
                             android:id="@+id/btnAttach"
